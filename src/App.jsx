@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, RadialBarChart, RadialBar,
@@ -7,8 +7,18 @@ import {
   LayoutDashboard, Package, MapPin, ArrowLeftRight, Wrench, BarChart3,
   FileText, Sparkles, LogOut, Search, ChevronRight, CheckCircle2, XCircle,
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
-  Building2, Shirt, Trophy, Download, Bell, ChevronDown, User,
+  Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
+  ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
+  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock,
 } from "lucide-react";
+import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
+import "react-big-calendar/lib/css/react-big-calendar.css";
+import { format, parse, startOfWeek, getDay } from "date-fns";
+import { th } from "date-fns/locale/th";
+
+const calendarLocalizer = dateFnsLocalizer({
+  format, parse, startOfWeek: () => startOfWeek(new Date(), { locale: th }), getDay, locales: { th },
+});
 
 /* ============================================================
    DESIGN TOKENS — ACT Sport Center
@@ -77,7 +87,7 @@ async function loadFromSheets() {
     normal: Number(r["ปกติ"]) || 0, damaged: Number(r["ชำรุด"]) || 0,
     lost: Number(r["สูญหาย"]) || 0, disposed: Number(r["จำหน่ายออก"]) || 0,
     borrowed: Number(r["ถูกยืมอยู่"]) || 0, minAlert: Number(r["เตือนเมื่อเหลือ"]) || 0,
-    price: Number(r["ราคา/หน่วย"]) || 0, note: r["หมายเหตุ"] || "", _row: r._row,
+    price: Number(r["ราคา/หน่วย"]) || 0, note: r["หมายเหตุ"] || "", imageUrl: r["รูปภาพ"] || "", _row: r._row,
   }));
   const borrows = data.borrows.map((r) => ({
     id: `BR-${r._row}`, _row: r._row, date: fmtDate(r["วันที่ยืม"]), borrower: r["ผู้ยืม"],
@@ -91,11 +101,154 @@ async function loadFromSheets() {
     itemName: r["ชื่ออุปกรณ์"], qty: Number(r["จำนวน"]) || 0, symptom: r["อาการ / สาเหตุ"] || "",
     reporter: r["ผู้แจ้ง"], severity: "ปานกลาง", status: r["สถานะ"] || "รอตรวจสอบ",
   }));
-  return { items, borrows, damages };
+  const staff = (data.staff || []).map((r) => ({
+    id: String(r["ID"]), name: r["ชื่อ"], dept: r["หน่วยงาน"], role: r["หน้าที่"],
+    phone: r["เบอร์โทร"] || "", level: (r["Level"] || "L1").trim(),
+  }));
+  const schedule = (data.schedule || []).map((r) => ({
+    id: `SC-${r._row}`, _row: r._row, day: r["วัน"], start: fmtTime(r["เวลาเริ่ม"]), end: fmtTime(r["เวลาจบ"]),
+    subject: r["วิชา / กิจกรรม"] || "", teacher: r["ครูผู้สอน"] || "", loc: r["สถานที่"] || "",
+    group: r["ระดับชั้น / กลุ่ม"] || "", equipment: r["อุปกรณ์ที่ใช้"] || "", qty: r["จำนวนที่ใช้"] || "", note: r["หมายเหตุ"] || "",
+  })).filter((s) => s.day); // skip fully blank template rows
+  const tasks = (data.tasks || []).map((r) => ({
+    id: r["ID"], _row: r._row, title: r["Title"] || "", description: r["Description"] || "",
+    priority: r["Priority"] || "NORMAL", status: r["Status"] || "TODO",
+    dueDate: r["DueDate"] ? fmtDate(r["DueDate"]) : "", dueTime: r["DueTime"] || "",
+    assignee: r["Assignee"] || "", createdBy: r["CreatedBy"] || "", location: r["Location"] || "",
+    relatedResource: r["RelatedResource"] || "", relatedFacility: r["RelatedFacility"] || "",
+    relatedBorrowId: r["RelatedBorrowId"] || "", relatedDamageId: r["RelatedDamageId"] || "",
+    taskType: r["TaskType"] || "general", comments: r["Comments"] || "",
+    createdDate: r["CreatedDate"] || "", completedDate: r["CompletedDate"] || "",
+  }));
+  const orgEvents = (data.orgEvents || []).map((r) => ({
+    id: r["ID"], title: r["ชื่องาน"] || "", start: fmtDate(r["วันที่เริ่ม"]), end: fmtDate(r["วันที่สิ้นสุด"]) || fmtDate(r["วันที่เริ่ม"]),
+    allDay: r["ทั้งวัน"] === "TRUE" || r["ทั้งวัน"] === true, dept: r["หน่วยงานเจ้าของ"] || "", owner: r["ผู้รับผิดชอบ"] || "",
+    loc: r["สถานที่"] || "", description: r["รายละเอียด"] || "", status: r["สถานะ"] || "scheduled",
+  }));
+  const repairs = (data.repairs || []).map((r) => ({
+    id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", date: fmtDate(r["วันที่ซ่อม"]),
+    description: r["รายละเอียด"] || "", cost: Number(r["ค่าใช้จ่าย"]) || 0, owner: r["ผู้รับผิดชอบ"] || "",
+    vendor: r["ร้าน/ช่าง"] || "", receiptUrl: r["ลิงก์ใบเสร็จ"] || "", status: r["สถานะ"] || "",
+  }));
+  const pmSchedule = (data.pmSchedule || []).map((r) => ({
+    id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", cycle: r["รอบซ่อม"] || "",
+    nextDate: fmtDate(r["วันนัดถัดไป"]), owner: r["ผู้รับผิดชอบ"] || "", note: r["หมายเหตุ"] || "",
+  }));
+  const docs = (data.docs || []).map((r) => ({
+    id: r["ID"], title: r["ชื่อเอกสาร"] || "", category: r["หมวดหมู่"] || "อื่นๆ", url: r["ลิงก์ไฟล์"] || "",
+    uploadedBy: r["อัปโหลดโดย"] || "", updatedDate: fmtDate(r["วันที่อัปเดต"]), version: r["เวอร์ชัน"] || "1",
+  }));
+  return { items, borrows, damages, staff, schedule, tasks, orgEvents, repairs, pmSchedule, docs };
 }
+function fmtTime(v) {
+  if (!v) return "";
+  if (typeof v === "string") return v;
+  try { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; } catch { return String(v); }
+}
+
+async function loadBudgetData(teacherId) {
+  const data = await sheetsFetch(`${API_URL}?action=budgetData&teacherId=${encodeURIComponent(teacherId)}`);
+  if (!data.ok && data.error && !("budgets" in data)) throw new Error(data.error || "load failed");
+  return {
+    isManager: !!data.isManager,
+    accessNote: data.error || "",
+    budgets: (data.budgets || []).map((b) => ({
+      id: b["ID"], name: b["ชื่อโครงการ"], owner: b["ผู้รับผิดชอบ"], dept: b["หน่วยงาน"],
+      amount: Number(b["งบที่ได้รับ"]) || 0, startDate: fmtDate(b["วันที่เริ่ม"]), endDate: fmtDate(b["วันที่สิ้นสุด"]),
+      status: b["สถานะ"] || "active", approvedBy: b["ผู้อนุมัติ"],
+    })),
+    income: (data.income || []).map((i) => ({
+      id: i["ID"], date: fmtDate(i["วันที่"]), type: i["ประเภท"], amount: Number(i["จำนวนเงิน"]) || 0,
+      receivedBy: i["ผู้รับเงิน"], receiptRef: i["อ้างอิงใบเสร็จ"], note: i["หมายเหตุ"],
+    })),
+    expenses: (data.expenses || []).map((e) => ({
+      id: e["ID"], budgetId: e["อ้างอิงงบประมาณ"], date: fmtDate(e["วันที่"]), item: e["รายการ"],
+      amount: Number(e["จำนวนเงิน"]) || 0, claimant: e["ผู้เบิก"], approvalStatus: e["สถานะอนุมัติ"] || "รออนุมัติ", receiptUrl: e["ใบเสร็จ"],
+    })),
+  };
+}
+
+
+/* ============================================================
+   WORK MANAGEMENT helpers
+   ============================================================ */
+const TODAY_ISO = "2026-09-17";
+const PRIORITY_META = {
+  CRITICAL: { label: "วิกฤต", fg: "#FFFFFF", bg: "#B91C3C" },
+  HIGH: { label: "สูง", fg: "#B91C3C", bg: "#FBEAEC" },
+  NORMAL: { label: "ปกติ", fg: "#B8791A", bg: "#FBF1DF" },
+  LOW: { label: "ต่ำ", fg: "#5B6273", bg: "#F2F3F7" },
+};
+const STATUS_META = {
+  TODO: { label: "รอดำเนินการ", fg: "#5B6273", bg: "#F2F3F7" },
+  IN_PROGRESS: { label: "กำลังทำ", fg: "#1E3A8A", bg: "#E8EEFC" },
+  WAITING: { label: "รอข้อมูล/อะไหล่", fg: "#B8791A", bg: "#FBF1DF" },
+  COMPLETED: { label: "เสร็จแล้ว", fg: "#1E7A4C", bg: "#EAF6EF" },
+  OVERDUE: { label: "เกินกำหนด", fg: "#FFFFFF", bg: "#B91C3C" },
+  CANCELLED: { label: "ยกเลิก", fg: "#8A8FA0", bg: "#F2F3F7" },
+};
+function isTaskOverdue(t) {
+  if (t.status === "COMPLETED" || t.status === "CANCELLED") return false;
+  if (!t.dueDate) return false;
+  return t.dueDate < TODAY_ISO;
+}
+function taskBucket(t) {
+  if (t.status === "COMPLETED") return "completed";
+  if (t.status === "CANCELLED") return "cancelled";
+  if (isTaskOverdue(t)) return "overdue";
+  if (t.dueDate === TODAY_ISO) return "today";
+  if (t.dueDate && t.dueDate > TODAY_ISO) return "upcoming";
+  return "todo";
+}
+function taskStatusDisplay(t) {
+  return isTaskOverdue(t) ? STATUS_META.OVERDUE : (STATUS_META[t.status] || STATUS_META.TODO);
+}
+
 function postToSheets(action, payload) {
   if (!API_URL) return Promise.resolve();
   return fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, payload }) }).catch(() => {});
+}
+async function postToSheetsAwait(action, payload) {
+  if (!API_URL) throw new Error("ยังไม่ได้เชื่อมต่อ Google Sheets backend");
+  const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, payload }) });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "บันทึกไม่สำเร็จ");
+  return data.result;
+}
+
+// resize + compress a File to a JPEG data URL's base64 body, so uploads stay small
+function compressImage(file, maxW = 1000, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.onerror = () => reject(new Error("อ่านไฟล์รูปไม่สำเร็จ"));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error("อ่านไฟล์ไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadItemImage(code, file) {
+  if (!API_URL) throw new Error("ยังไม่ได้เชื่อมต่อ Google Sheets backend — อัปโหลดรูปไม่ได้ในโหมดตัวอย่างนี้");
+  const base64 = await compressImage(file);
+  const res = await fetch(API_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "uploadImage", payload: { code, filename: `${code}.jpg`, mimeType: "image/jpeg", base64 } }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "อัปโหลดไม่สำเร็จ");
+  return data.result.url;
 }
 
 /* ============================================================
@@ -227,10 +380,66 @@ function seedItems() {
       id: `${code}-${i}`, code, name, brand, catCode, loc, owner,
       normal, damaged, lost, disposed, borrowed: 0,
       minAlert: normal + damaged > 0 && normal <= 2 ? 2 : 0,
-      price: 0, note,
+      price: 0, note, imageUrl: "",
     };
   });
 }
+
+const STAFF = [
+  { id: "10645", name: "น.ส.วรรณา จิรพลานุรักษ์", dept: "ศูนย์กีฬา", role: "สอนกีฬา แผนก EP", phone: "099-453-0235", level: "L1" },
+  { id: "10668", name: "นายชวินทร์ โรยอุตระ", dept: "ศูนย์กีฬา", role: "งานศูนย์กีฬา", phone: "085-155-4533", level: "L2" },
+  { id: "10691", name: "น.ส.รัตนาภรณ์ ลิ้มทุติเนตร", dept: "งานสระว่ายน้ำ", role: "หัวหน้างานสระว่ายน้ำ", phone: "084-356-5748", level: "L2" },
+  { id: "10692", name: "นายชาญวิทย์ พึ่งอิ่ม", dept: "ศูนย์กีฬา", role: "หัวหน้าศูนย์กีฬา", phone: "089-524-1646", level: "L3" },
+  { id: "10711", name: "นายณัฐวุฒิ ดอกกฐิน", dept: "งานกิจกรรมนักเรียน", role: "งานกิจกรรมนักเรียน/งานสอนกีฬา", phone: "087-763-3250", level: "L1" },
+  { id: "10755", name: "นายศุภรักษ์ สุขพันธ์", dept: "ศูนย์กีฬา", role: "ดูแล ACT Sport Arena/สอนกีฬาเทนนิส", phone: "080-665-5530", level: "L1" },
+  { id: "10788", name: "น.ส.มลาภรณ์ ซังปาน", dept: "ศูนย์กีฬา", role: "งานจัดการเรียนการสอนศูนย์กีฬา", phone: "090-708-6748", level: "L2" },
+  { id: "10800", name: "นายสุขพงษ์ ประดับพลอย", dept: "ศูนย์กีฬา", role: "ครูผู้สอน ฟุตบอลป.6", phone: "099-396-7779", level: "L1" },
+  { id: "10804", name: "นายกรภัทร์ นิ่มนวน", dept: "ศูนย์กีฬา", role: "ครูผู้สอน ฟุตบอลป.4", phone: "087-714-8914", level: "L1" },
+  { id: "10819", name: "นายรณกฤต พรจิรกิตติพงศ์", dept: "ศูนย์ฟิตเนส", role: "ผู้ประสานงานศูนย์ฟิตเนส", phone: "081-410-1200", level: "L2" },
+  { id: "10830", name: "น.ส.ภวรัญชน์ ผลเจริญ", dept: "ศูนย์กีฬา", role: "งานศูนย์กีฬา", phone: "095-167-4514", level: "L2" },
+  { id: "20242", name: "นางวรัญญา ตันพิริยะกุล", dept: "ศูนย์กีฬา", role: "ธุรการศูนย์กีฬา", phone: "095-567-9360", level: "L2" },
+  { id: "20246", name: "น.ส.ธนัญญา แสงศิโรเวฐน์", dept: "ศูนย์ฟิตเนส", role: "ประจำเคาท์เตอร์ศูนย์ฟิตเนส", phone: "", level: "L1" },
+  { id: "20197", name: "นายธนกร บุญจรัส", dept: "งานสระว่ายน้ำ", role: "ผู้ฝึกสอนกีฬาว่ายน้ำ", phone: "084-209-6530", level: "L1" },
+  { id: "62271", name: "นางจำปี เอี่ยมกลิ่น", dept: "งานสระว่ายน้ำ", role: "พนักงานประจำสระว่ายน้ำ", phone: "064-131-8663", level: "L1" },
+  { id: "10360", name: "น.ส.เพชรพรรณ์ เหมะสุรินทร์", dept: "งานสระว่ายน้ำ", role: "ประจำเคาท์เตอร์สระว่ายน้ำ", phone: "083-023-2618", level: "L1" },
+  { id: "50013", name: "น.ส.กนกวรรณ หม่องสนธิ", dept: "ศูนย์กีฬา", role: "งานการเรียนการสอนกีฬา/สอนเต้น", phone: "063-1596459", level: "L1" },
+  { id: "50051", name: "นายธีระพงศ์ ปานเด", dept: "ศูนย์กีฬา", role: "ผู้ฝึกสอนวิชาศิลปะการเต้น/สอนวิชาศิลป์ดนตรี ม.4-6", phone: "099-289-8366", level: "L1" },
+  { id: "50052", name: "น.ส.กฤติยา ต่อสกุล", dept: "ศูนย์กีฬา", role: "ผู้ฝึกสอนวิชาศิลปะการเต้น", phone: "088-646-6368", level: "L2" },
+  { id: "50053", name: "น.ส.ภวรัญชน์ ผลเจริญ", dept: "บริหารฝ่าย", role: "", phone: "096-642-9968", level: "L2" },
+  { id: "50060", name: "นายธภัทร์ ถิ่นทิพย์", dept: "สระว่ายน้ำ", role: "ผู้ฝึกสอนทีมสโมสรว่ายน้ำ/ดูแลสระว่ายน้ำ", phone: "080-054-6597", level: "L1" },
+  { id: "50062", name: "นายอนุวัฒน์ เทพประเทียน", dept: "ศูนย์กีฬา", role: "ผู้ฝึกสอนวิชาเทเบิลเทนนิส/สอนเทเบิลเทนนิส", phone: "085095943", level: "L1" },
+  { id: "40001", name: "นายวุฒิพร ไชยเผือก", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "083-5555727", level: "L1" },
+  { id: "40002", name: "นายกรณ์พงษ์ พงษ์ศิริปรีดา", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "081-7713306", level: "L1" },
+  { id: "40004", name: "นายวิทวัส ศรีระโส", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "084-7329426", level: "L1" },
+  { id: "40005", name: "นายณัทพงษ์ ศรีไชยกิจ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "085-5167152", level: "L1" },
+  { id: "40008", name: "น.สณัฏฐกันย์ วรรณตุง", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "086-9943119", level: "L1" },
+  { id: "40009", name: "นายธนรัฐ จาตุกานต์นนท์", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนกอล์ฟ", phone: "082-6639149", level: "L1" },
+  { id: "40021", name: "นายประทีป กลับบ้านเกาะ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "097-2950564", level: "L1" },
+  { id: "40022", name: "นายศาสตรา อินทรประเสริฐ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทนนิส", phone: "091-8746480", level: "L1" },
+  { id: "40023", name: "นายสิรภพ จิรจตุรพักตร์", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนหน้าผา", phone: "065-4788744", level: "L1" },
+  { id: "40023", name: "นายอัมรินทร์ จุลแวง", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนมวยไทย", phone: "094-5678983", level: "L1" },
+  { id: "40024", name: "นายทศพล ภูสมหมาย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนหน้าผา", phone: "095-5071621", level: "L1" },
+  { id: "40025", name: "นายประพัฒน์ เจริญเณรรักษา", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "094-5501256", level: "L1" },
+  { id: "40030", name: "นายเอกพงษ์ แสงเขียว", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "083-102-4750", level: "L1" },
+  { id: "40031", name: "นายคชภัค กุลกวีวุฒิ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "089-513-2239", level: "L1" },
+  { id: "40033", name: "นายณัฐวินท์ ลิ่มสกุล", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนกอล์ฟ", phone: "082-5274340", level: "L1" },
+  { id: "40036", name: "นายแหลมทอง รัตนสมัย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนมวย", phone: "086-019-8341", level: "L1" },
+  { id: "40037", name: "นายอานุภาพ พณิชีพ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนผา", phone: "0887256147", level: "L1" },
+  { id: "40038", name: "นายธีรศักดิ์ อินต๊ะเรือน", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนฟุตซอล", phone: "0852495268", level: "L1" },
+  { id: "40039", name: "นายกรวสิษฎิ์ แก้วกระหนก", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเต้น", phone: "0825659923", level: "L1" },
+  { id: "40040", name: "น.ส.มนต์ทิรา พรหมาพันธุ์", dept: "ครูสอนกีฬาพิเศษ", role: "เทควันโด", phone: "095-905-0368", level: "L1" },
+  { id: "40043", name: "นายอมรเทพ เจริญชัย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนผา", phone: "064-348-3071", level: "L1" },
+  { id: "40044", name: "นายรุ่งรดิศ ทานะมัย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนฟุตซอล", phone: "629355988", level: "L1" },
+  { id: "40045", name: "นายวัชระ เขียวอุ่ม", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเต้น", phone: "0826748604", level: "L1" },
+  { id: "40047", name: "นายกศมพงศ์ ไตรสมบูรณ์", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "080-264-2915", level: "L1" },
+  { id: "60001", name: "น.ส.สุชารัตน์ ภาพทอง", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Yoga", phone: "087-0564-696", level: "L1" },
+  { id: "60002", name: "น.ส.วนิดา จิรเจริญจิตต์", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Yoga", phone: "085-3306-629", level: "L1" },
+  { id: "60005", name: "นายเจษฎา พินิจมั้ง", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Weight Training", phone: "097-1313063", level: "L1" },
+  { id: "60007", name: "นายพีรวัส ชูเพชร", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Gym Ball", phone: "087-1094565", level: "L1" },
+  { id: "60006", name: "นายกรันติพล โชคศักดิ์ศรีกุล", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Mind & Body", phone: "085-9952-464", level: "L1" },
+  { id: "60008", name: "น.ส.ชฏาภรณ์ จันทะหงษ์", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Zumba Dance", phone: "080-1101-160", level: "L1" },
+  { id: "60009", name: "นายมานิตย์ บุบผาสุข", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Power Fighting", phone: "090-9722716", level: "L1" },
+];
 
 const USERS = [
   { id: "T00500", name: "มิสสุพัตรา แสงทอง", role: "L0", dept: "กลุ่มสาระภาษาไทย (นอกสังกัดศูนย์กีฬา)", title: "ครูนอกสังกัดศูนย์กีฬา" },
@@ -250,10 +459,10 @@ const ROLE_META = {
 
 const NAV = {
   L0: [["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
-  L1: [["dashboard", "งานของฉัน", LayoutDashboard], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench]],
-  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench]],
-  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L1: [["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 const canEdit = (role) => role === "L2" || role === "L3";
@@ -366,6 +575,13 @@ export default function App() {
   ]);
   const [damages, setDamages] = useState([]);
   const [actionsLog, setActionsLog] = useState([]);
+  const [staffList, setStaffList] = useState(STAFF);
+  const [schedule, setSchedule] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [orgEvents, setOrgEvents] = useState([]);
+  const [repairs, setRepairs] = useState([]);
+  const [pmSchedule, setPmSchedule] = useState([]);
+  const [docs, setDocs] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
 
@@ -374,8 +590,12 @@ export default function App() {
     (async () => {
       if (API_URL) {
         try {
-          const { items: si, borrows: sb, damages: sd } = await loadFromSheets();
+          const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc, tasks: tk, orgEvents: oe, repairs: rp, pmSchedule: pm, docs: dc } = await loadFromSheets();
           setItems(si); setBorrows(sb); setDamages(sd);
+          if (ss && ss.length) setStaffList(ss);
+          setSchedule(sc || []);
+          setTasks(tk || []);
+          setOrgEvents(oe || []); setRepairs(rp || []); setPmSchedule(pm || []); setDocs(dc || []);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
         return;
@@ -401,14 +621,64 @@ export default function App() {
   useEffect(() => { if (!loading) window.storage?.set("actions", JSON.stringify(actionsLog), true).catch(() => {}); }, [actionsLog, loading]);
 
   const handleLogin = (id) => {
-    const u = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
-    if (!u) { setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ — ลองเลือกบัญชีตัวอย่างด้านล่าง"); return; }
-    setUser(u); setTab(u.role === "L0" ? "borrow" : "dashboard"); setLoginErr("");
+    const demo = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
+    if (demo) { setUser(demo); setTab(demo.role === "L0" ? "borrow" : "dashboard"); setLoginErr(""); return; }
+    const s = staffList.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
+    if (s) {
+      const role = ["L0", "L1", "L2", "L3", "L4"].includes(s.level) ? s.level : "L1";
+      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role });
+      setTab(role === "L0" ? "borrow" : "dashboard"); setLoginErr("");
+      return;
+    }
+    setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ — ลองเลือกบัญชีตัวอย่างด้านล่าง");
   };
 
   const logAction = useCallback((text) => {
     setActionsLog((prev) => [{ id: `A-${Date.now()}`, ts: new Date().toISOString(), user: user?.name, text }, ...prev].slice(0, 200));
   }, [user]);
+
+  const createTask = useCallback(async (payload) => {
+    const full = { ...payload, createdBy: user?.name || "" };
+    const r = await postToSheetsAwait("addTask", full);
+    const rec = { ...full, id: r.id, comments: "", createdDate: new Date().toISOString(), completedDate: "" };
+    setTasks((prev) => [rec, ...prev]);
+    logAction(`สร้างงานใหม่: ${payload.title}`);
+    return rec;
+  }, [user, logAction]);
+
+  const patchTask = useCallback(async (id, patch) => {
+    await postToSheetsAwait("updateTask", { id, ...patch });
+    setTasks((prev) => prev.map((t) => {
+      if (t.id !== id) return t;
+      const next = { ...t, ...patch };
+      if (patch.status === "COMPLETED") next.completedDate = new Date().toISOString();
+      if (patch.addComment) {
+        const stamp = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const line = `[${stamp}] ${patch.commentBy || ""}: ${patch.addComment}`;
+        next.comments = t.comments ? `${t.comments}\n${line}` : line;
+      }
+      delete next.addComment; delete next.commentBy;
+      return next;
+    }));
+    logAction(`อัปเดตงาน ${id}${patch.status ? " → " + patch.status : ""}`);
+  }, [logAction]);
+
+  // smart task creation: overdue borrows without a linked follow-up task get one automatically
+  useEffect(() => {
+    if (!user || loading || !API_URL) return;
+    if (!(user.role === "L2" || user.role === "L3")) return;
+    const overdueBorrows = borrows.filter((b) => b.status === "borrowed" && b.due && b.due < TODAY_ISO);
+    const linked = new Set(tasks.map((t) => t.relatedBorrowId).filter(Boolean));
+    overdueBorrows.filter((b) => !linked.has(b.id)).forEach((b) => {
+      createTask({
+        title: `ติดตามการคืน: ${b.itemName} (${b.itemCode})`,
+        description: `ยืมโดย ${b.borrower} กำหนดคืน ${b.due} ยังไม่มีการคืน`,
+        priority: "NORMAL", status: "TODO", dueDate: b.due, dueTime: "", assignee: "",
+        location: b.where || "", relatedResource: b.itemCode, relatedBorrowId: b.id, taskType: "follow-up",
+      }).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading, borrows.length, tasks.length]);
 
   if (!user) return <LoginScreen loginId={loginId} setLoginId={setLoginId} onLogin={handleLogin} err={loginErr} />;
 
@@ -426,11 +696,18 @@ export default function App() {
           </div>
         )}
         <main className="flex-1 p-6 overflow-y-auto">
-          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} setTab={setTab} />}
+          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
+          {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
           {tab === "facility" && <Facility items={items} />}
+          {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
+          {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
+          {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
+          {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
+          {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
-          {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} logAction={logAction} />}
+          {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
           {tab === "analytics" && <Analytics items={items} />}
           {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
           {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
@@ -445,57 +722,103 @@ export default function App() {
    ============================================================ */
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   return (
-    <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: C.navyDeep }}>
-      <div className="hidden md:flex flex-col justify-between w-[42%] p-12 relative overflow-hidden"
-        style={{ background: `linear-gradient(165deg, ${C.navyDeep} 0%, ${C.navy} 65%, ${C.crimsonDeep} 130%)` }}>
-        <div className="absolute inset-0 opacity-[0.07]" style={{
-          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 38px, ${C.white} 38px, ${C.white} 39px), repeating-linear-gradient(90deg, transparent, transparent 38px, ${C.white} 38px, ${C.white} 39px)`,
-        }} />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-1">
-            <Trophy size={22} style={{ color: C.accent }} />
-            <span className="text-xs tracking-wide font-semibold" style={{ color: "#D8D8DA" }}>ASSUMPTION COLLEGE THONBURI</span>
-          </div>
-          <h1 className="text-4xl font-bold text-white leading-tight mt-6">ACT Sport Center<br />Resource Intelligence</h1>
-          <p className="mt-4 text-sm max-w-sm" style={{ color: "#C7D0E8" }}>
-            แพลตฟอร์มบริหารทรัพยากร อุปกรณ์ สถานที่ และการยืม–คืนของศูนย์กีฬา
-            ที่แปลงข้อมูลให้เป็นการตัดสินใจของผู้บริหารแบบเรียลไทม์
-          </p>
-        </div>
-        <div className="relative grid grid-cols-3 gap-4 text-white">
-          {[["256", "รายการครุภัณฑ์"], ["17", "หมวดกีฬา"], ["18", "สถานที่/อาคาร"]].map(([n, l]) => (
-            <div key={l}>
-              <div className="text-2xl font-bold" style={{ color: C.accent }}>{n}</div>
-              <div className="text-xs mt-1" style={{ color: "#C7D0E8" }}>{l}</div>
-            </div>
-          ))}
-        </div>
+    <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
+      {/* LEFT — illustration panel, image fills edge-to-edge */}
+      <div className="hidden md:block w-[46%] relative overflow-hidden" style={{ borderRight: "3px solid #C9A15A" }}>
+        <img src="https://i.postimg.cc/KzSFyxxH/ACT-SPORT-CENTER-(2).png" alt="ACT Sport Center mascots"
+          className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center" }} />
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-8" style={{ background: C.paper }}>
-        <div className="w-full max-w-sm">
-          <h2 className="text-xl font-bold mb-1" style={{ color: C.ink }}>เข้าสู่ระบบด้วยรหัสครู</h2>
-          <p className="text-sm mb-6" style={{ color: C.slate }}>กรอก Teacher ID เพื่อเข้าใช้งาน ระบบจะโหลดสิทธิ์การใช้งานตามระดับของคุณโดยอัตโนมัติ</p>
-          <Field label="TEACHER ID">
-            <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
-              placeholder="เช่น T00125" style={inputStyle} />
-          </Field>
-          {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: C.crimson }}><AlertTriangle size={13} />{err}</div>}
-          <Btn onClick={() => onLogin(loginId)} variant="crimson">เข้าสู่ระบบ <ChevronRight size={15} /></Btn>
+      {/* RIGHT — brushed-metal glass login panel */}
+      <div className="flex-1 relative flex items-center justify-center overflow-hidden" style={{
+        background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
+      }}>
+        {/* brushed-metal texture */}
+        <div className="absolute inset-0 opacity-30" style={{
+          backgroundImage: "repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 3px)",
+        }} />
+        <div className="absolute inset-0" style={{
+          background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
+        }} />
 
-          <div className="mt-8 pt-6" style={{ borderTop: `1px solid ${C.line}` }}>
-            <div className="text-xs font-semibold mb-3" style={{ color: C.slate }}>บัญชีตัวอย่างสำหรับสาธิตแต่ละระดับสิทธิ์</div>
+        {/* vertical brand wordmark — real image asset, flush to the top-right corner */}
+        <div className="hidden lg:block absolute right-0 top-0 w-24">
+          <img src="https://i.postimg.cc/vBFMdbbL/ACT-SPORT-CENTER.png" alt="ACT SPORT CENTER"
+            className="w-full" style={{ objectFit: "contain" }} />
+        </div>
+
+        {/* developer credit, bottom-right */}
+        <div className="absolute bottom-4 right-6 lg:right-32 text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Developer : P.Prayoon-Anutep</div>
+
+        <div className="relative w-full max-w-sm mx-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Users size={30} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
+            <div>
+              <div className="text-lg font-semibold" style={{ color: C.white }}>ACT SportHub</div>
+              <div className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>ลงทะเบียนเข้าใช้งานด้วยรหัสประจำตัวครู</div>
+            </div>
+          </div>
+
+          {/* glass card */}
+          <div className="relative p-6" style={{
+            background: "rgba(255,255,255,0.06)",
+            backdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.14)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)",
+          }}>
+            <h2 className="text-xl font-bold mb-5" style={{ color: C.white }}>Login</h2>
+
+            <div className="relative mb-4">
+              <User size={15} style={{ position: "absolute", left: 12, top: 13, color: "rgba(255,255,255,0.4)" }} />
+              <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
+                placeholder="Teacher ID เช่น T00125"
+                style={{
+                  width: "100%", padding: "10px 12px 10px 34px", fontFamily: FONT, fontSize: 14,
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)",
+                  color: C.white, outline: "none",
+                }} />
+            </div>
+
+            {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
+
+            {/* GO button — circular red gem, glass-card style */}
+            <div className="flex items-center gap-3 mt-5">
+              <button onClick={() => onLogin(loginId)}
+                className="flex-1 py-2.5 text-sm font-semibold"
+                style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", color: C.white }}>
+                เข้าสู่ระบบ
+              </button>
+              <button onClick={() => onLogin(loginId)}
+                aria-label="Go"
+                className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-bold text-xs"
+                style={{
+                  background: `radial-gradient(circle at 32% 28%, #ff5a72, ${C.crimson} 45%, ${C.crimsonDeep} 100%)`,
+                  boxShadow: "0 0 18px rgba(200,30,58,0.55), inset 0 1px 1px rgba(255,255,255,0.4)",
+                  color: C.white,
+                }}>
+                GO
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
+            © 2026 Assumption College Thonburi<br />ACT Sport Center Resource Intelligence · v1.0.0
+          </div>
+
+          {/* demo accounts */}
+          <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+            <div className="text-xs font-semibold mb-3" style={{ color: "rgba(255,255,255,0.45)" }}>บัญชีตัวอย่างสำหรับสาธิตแต่ละระดับสิทธิ์</div>
             <div className="space-y-2">
               {USERS.map((u) => (
                 <button key={u.id} onClick={() => onLogin(u.id)}
                   className="w-full flex items-center justify-between px-3 py-2.5 text-left"
-                  style={{ border: `1px solid ${C.line}`, background: C.white }}>
+                  style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)" }}>
                   <div>
-                    <div className="text-sm font-medium" style={{ color: C.ink }}>{u.name}</div>
-                    <div className="text-xs" style={{ color: C.mute }}>{u.title} · {u.id}</div>
+                    <div className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{u.name}</div>
+                    <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{u.title} · {u.id}</div>
                   </div>
-                  <Pill fg={ROLE_META[u.role].tint} bg="#F2F3F7">{ROLE_META[u.role].label}</Pill>
+                  <Pill fg={C.accent} bg="rgba(228,53,79,0.12)">{ROLE_META[u.role].label}</Pill>
                 </button>
               ))}
             </div>
@@ -585,7 +908,7 @@ function computeKpis(items, borrows) {
   return { total, normal, damaged, lost, disposed, activeBorrows, overdue, outOfStock, watch };
 }
 
-function Dashboard({ user, items, borrows, damages, setTab }) {
+function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
   const k = computeKpis(items, borrows);
   const byCat = useMemo(() => {
     const m = {};
@@ -598,17 +921,52 @@ function Dashboard({ user, items, borrows, damages, setTab }) {
 
   const topDamaged = useMemo(() => [...items].filter((i) => i.damaged > 0).sort((a, b) => b.damaged - a.damaged).slice(0, 6), [items]);
 
+  const myTasks = useMemo(() => tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name), [tasks, user.name]);
+  const taskCounts = useMemo(() => {
+    const c = { overdue: 0, today: 0, upcoming: 0, completed: 0 };
+    myTasks.forEach((t) => {
+      const b = taskBucket(t);
+      if (b === "overdue") c.overdue++;
+      else if (b === "today") c.today++;
+      else if (b === "upcoming") c.upcoming++;
+      else if (b === "completed") c.completed++;
+    });
+    return c;
+  }, [myTasks]);
+  const todaysTasks = useMemo(() => myTasks.filter((t) => taskBucket(t) === "today" || taskBucket(t) === "overdue"), [myTasks]);
+
+  const orgOverdueTasks = tasks.filter((t) => taskBucket(t) === "overdue");
+  const orgTodayTasks = tasks.filter((t) => taskBucket(t) === "today");
+  const orgCritical = tasks.filter((t) => t.priority === "CRITICAL" && t.status !== "COMPLETED" && t.status !== "CANCELLED");
+
   if (user.role === "L1") {
     const mine = borrows.filter((b) => b.borrower === user.name);
     return (
       <div>
-        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="รายการยืม–คืนและงานของคุณ" />
+        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="นี่คือสิ่งที่คุณต้องทำวันนี้" />
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <StatCard label="เกินกำหนด" value={taskCounts.overdue} icon={AlertTriangle} tone="crimson" />
+          <StatCard label="ครบกำหนดวันนี้" value={taskCounts.today} icon={Clock} tone="gold" />
+          <StatCard label="กำลังจะถึง" value={taskCounts.upcoming} icon={CalendarDays} tone="navy" />
+          <StatCard label="เสร็จแล้ว" value={taskCounts.completed} icon={CheckCircle2} tone="ok" />
+        </div>
+
+        {todaysTasks.length > 0 && (
+          <div className="mb-6 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><ClipboardList size={15} /> งานของวันนี้</h3>
+            <div className="space-y-2">
+              {todaysTasks.map((t) => <TaskRow key={t.id} t={t} onOpen={() => setTab("tasks")} />)}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-4 mb-6">
           <StatCard label="กำลังยืมอยู่" value={mine.filter((b) => b.status === "borrowed").length} icon={ArrowLeftRight} tone="navy" />
           <StatCard label="เกินกำหนดคืน" value={mine.filter((b) => b.status === "borrowed" && new Date(b.due) < new Date("2026-09-15")).length} icon={AlertTriangle} tone="crimson" />
           <StatCard label="คืนแล้วทั้งหมด" value={mine.filter((b) => b.status === "returned").length} icon={CheckCircle2} tone="ok" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
+          <QuickAction icon={ClipboardList} title="งานของฉันทั้งหมด" desc="ดูรายการงานที่ได้รับมอบหมายทั้งหมด" onClick={() => setTab("tasks")} />
           <QuickAction icon={ArrowLeftRight} title="ยืมอุปกรณ์" desc="ค้นหาอุปกรณ์ที่พร้อมใช้และส่งคำขอยืม" onClick={() => setTab("borrow")} />
           <QuickAction icon={Wrench} title="แจ้งของชำรุด" desc="รายงานอุปกรณ์ที่พบว่าชำรุดหรือใช้งานไม่ได้" onClick={() => setTab("damage")} />
         </div>
@@ -625,6 +983,21 @@ function Dashboard({ user, items, borrows, damages, setTab }) {
         <StatCard label="ชำรุด (ชิ้น)" value={k.damaged.toLocaleString()} tone="crimson" icon={Wrench} />
         <StatCard label="ถูกยืมอยู่" value={k.activeBorrows} sub={k.overdue > 0 ? `${k.overdue} เกินกำหนด` : "ไม่มีเกินกำหนด"} tone="gold" icon={ArrowLeftRight} />
       </div>
+
+      {(orgOverdueTasks.length > 0 || orgTodayTasks.length > 0 || orgCritical.length > 0) && (
+        <div className="p-4 mb-4" style={{ background: C.badBg, border: `1px solid #E9B9C1` }}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} style={{ color: C.crimson }} />
+            <h3 className="text-sm font-bold" style={{ color: C.crimsonDeep }}>ATTENTION REQUIRED — ต้องการความสนใจ</h3>
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm" style={{ color: "#5B2430" }}>
+            {orgOverdueTasks.length > 0 && <span>🔴 {orgOverdueTasks.length} งานเกินกำหนด</span>}
+            {orgTodayTasks.length > 0 && <span>🟡 {orgTodayTasks.length} งานครบกำหนดวันนี้</span>}
+            {orgCritical.length > 0 && <span>⚠️ {orgCritical.length} งานวิกฤต</span>}
+          </div>
+          <button onClick={() => setTab("tasks")} className="text-xs font-semibold mt-2 underline" style={{ color: C.crimsonDeep }}>ไปที่หน้าจัดการงาน →</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
@@ -676,6 +1049,27 @@ function Dashboard({ user, items, borrows, damages, setTab }) {
   );
 }
 
+function TaskRow({ t, onOpen, showAssignee }) {
+  const sm = taskStatusDisplay(t);
+  const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
+  return (
+    <button onClick={onOpen} className="w-full flex items-center justify-between px-3 py-2.5 text-left" style={{ border: `1px solid ${C.line}` }}>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate" style={{ color: C.ink }}>{t.title}</div>
+        <div className="text-xs mt-0.5" style={{ color: C.mute }}>
+          {t.location && <span>{t.location} · </span>}
+          {t.dueDate && <span>กำหนด {t.dueDate}{t.dueTime ? ` ${t.dueTime}` : ""}</span>}
+          {showAssignee && t.assignee && <span> · {t.assignee}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0 ml-3">
+        <Pill fg={pm.fg} bg={pm.bg}>{pm.label}</Pill>
+        <Pill fg={sm.fg} bg={sm.bg}>{sm.label}</Pill>
+      </div>
+    </button>
+  );
+}
+
 function QuickAction({ icon: Icon, title, desc, onClick }) {
   return (
     <button onClick={onClick} className="text-left p-5 flex items-start gap-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
@@ -698,7 +1092,10 @@ function Inventory({ user, items, setItems, logAction }) {
   const [cat, setCat] = useState("ALL");
   const [edit, setEdit] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
   const editable = canEdit(user.role) || canManage(user.role);
+  const manager = canManage(user.role);
 
   const filtered = items.filter((i) =>
     (cat === "ALL" || i.catCode === cat) &&
@@ -712,10 +1109,27 @@ function Inventory({ user, items, setItems, logAction }) {
     setEdit(null);
   };
 
+  const addItem = (form) => {
+    const rec = { id: form.code, code: form.code, name: form.name, brand: form.brand, catCode: form.catCode,
+      loc: form.loc, owner: form.owner, normal: form.normal, damaged: form.damaged, lost: 0, disposed: 0,
+      borrowed: 0, minAlert: form.minAlert, price: form.price, note: form.note, imageUrl: "" };
+    setItems((prev) => [rec, ...prev]);
+    logAction(`เพิ่มครุภัณฑ์ใหม่ ${form.code} — ${form.name}`);
+    postToSheets("addItem", { ...form, catName: catName(form.catCode) });
+    setShowNew(false);
+  };
+
+  const deleteItem = (it) => {
+    setItems((prev) => prev.filter((x) => x.id !== it.id));
+    logAction(`ลบครุภัณฑ์ ${it.code} — ${it.name}`);
+    postToSheets("deleteItem", { code: it.code });
+    setConfirmDel(null);
+  };
+
   return (
     <div>
       <SectionHead eyebrow="INVENTORY" title="ทะเบียนครุภัณฑ์" sub={`${filtered.length} รายการ จากทั้งหมด ${items.length} รายการ`}
-        right={!editable && <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
+        right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มครุภัณฑ์ใหม่</Btn> : !editable && <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
 
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
@@ -757,11 +1171,14 @@ function Inventory({ user, items, setItems, logAction }) {
                   <td className="px-3 py-2 text-xs font-semibold">{avail}</td>
                   <td className="px-3 py-2"><Pill fg={s.fg} bg={s.bg}>{s.label}</Pill></td>
                   <td className="px-3 py-2">
-                    {editable ? (
-                      <button onClick={() => setEdit(it)}><Pencil size={14} style={{ color: C.navy }} /></button>
-                    ) : (
-                      <Eye size={14} style={{ color: C.mute }} />
-                    )}
+                    <div className="flex items-center gap-2">
+                      {editable ? (
+                        <button onClick={() => setEdit(it)}><Pencil size={14} style={{ color: C.navy }} /></button>
+                      ) : (
+                        <Eye size={14} style={{ color: C.mute }} />
+                      )}
+                      {manager && <button onClick={() => setConfirmDel(it)}><X size={14} style={{ color: C.crimson }} /></button>}
+                    </div>
                   </td>
                 </tr>
               );
@@ -775,21 +1192,119 @@ function Inventory({ user, items, setItems, logAction }) {
           <ItemEditForm item={edit} onSave={saveEdit} manager={canManage(user.role)} />
         </Modal>
       )}
-      {preview && <ItemImagePopup item={preview} onClose={() => setPreview(null)} />}
+      {showNew && (
+        <Modal title="เพิ่มครุภัณฑ์ใหม่" onClose={() => setShowNew(false)} wide>
+          <ItemAddForm onSave={addItem} />
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>
+            ต้องการลบ <b>{confirmDel.code} — {confirmDel.name}</b> ออกจากทะเบียนใช่หรือไม่? การลบนี้จะลบแถวออกจาก Google Sheet ด้วย และย้อนกลับไม่ได้
+          </p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteItem(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+      {preview && (
+        <ItemImagePopup
+          item={preview}
+          onClose={() => setPreview(null)}
+          editable={editable}
+          onUploaded={(code, url) => {
+            setItems((prev) => prev.map((i) => (i.code === code ? { ...i, imageUrl: url } : i)));
+            setPreview((prev) => (prev ? { ...prev, imageUrl: url } : prev));
+            logAction(`อัปโหลดรูป ${code}`);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ItemImagePopup({ item, onClose }) {
+function ItemAddForm({ onSave }) {
+  const [form, setForm] = useState({ code: "", name: "", brand: "", catCode: CATEGORIES[0].code, loc: "", owner: "", normal: 1, damaged: 0, minAlert: 0, price: 0, note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setNum = (k) => (e) => setForm((f) => ({ ...f, [k]: Number(e.target.value) }));
+  const valid = form.code.trim() && form.name.trim();
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="รหัสครุภัณฑ์ *"><input value={form.code} onChange={set("code")} placeholder="เช่น BDM-001" style={inputStyle} /></Field>
+      <Field label="ชื่อรายการ *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field>
+      <Field label="ยี่ห้อ/รุ่น"><input value={form.brand} onChange={set("brand")} style={inputStyle} /></Field>
+      <Field label="หมวด">
+        <select value={form.catCode} onChange={set("catCode")} style={inputStyle}>
+          {CATEGORIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
+      </Field>
+      <Field label="สถานที่เก็บ">
+        <select value={form.loc} onChange={set("loc")} style={inputStyle}>
+          <option value="">— เลือกสถานที่ —</option>
+          {LOCATIONS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
+        </select>
+      </Field>
+      <Field label="ผู้ดูแล"><input value={form.owner} onChange={set("owner")} style={inputStyle} /></Field>
+      <Field label="จำนวนปกติ"><input type="number" value={form.normal} onChange={setNum("normal")} style={inputStyle} /></Field>
+      <Field label="จำนวนชำรุด"><input type="number" value={form.damaged} onChange={setNum("damaged")} style={inputStyle} /></Field>
+      <Field label="ราคา/หน่วย (บาท)"><input type="number" value={form.price} onChange={setNum("price")} style={inputStyle} /></Field>
+      <Field label="เตือนเมื่อเหลือ"><input type="number" value={form.minAlert} onChange={setNum("minAlert")} style={inputStyle} /></Field>
+      <div className="col-span-2">
+        <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
+      </div>
+      <div className="col-span-2 flex justify-end mt-2">
+        <Btn onClick={() => onSave(form)} disabled={!valid}>บันทึกครุภัณฑ์ใหม่</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ItemImagePopup({ item, onClose, editable, onUploaded }) {
   const s = statusOf(item);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+
+  const pick = () => fileRef.current?.click();
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(""); setUploading(true);
+    try {
+      const url = await uploadItemImage(item.code, file);
+      onUploaded(item.code, url);
+    } catch (ex) {
+      setErr(ex.message || "อัปโหลดไม่สำเร็จ");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,10,10,0.65)" }} onClick={onClose}>
       <div className="w-full flex flex-col" style={{ maxWidth: 380, background: C.white, border: `1px solid ${C.line}` }} onClick={(e) => e.stopPropagation()}>
-        <div className="relative flex items-center justify-center" style={{ height: 200, background: `linear-gradient(150deg, ${C.navyDeep}, ${C.navy})` }}>
-          <button onClick={onClose} className="absolute top-2 right-2"><X size={18} color={C.white} /></button>
-          <Package size={64} color={C.accent} strokeWidth={1.25} />
-          <div className="absolute bottom-2 left-2 text-[11px]" style={{ color: "#C9C9CC" }}>ยังไม่มีรูปถ่ายจริงในระบบ — แสดงไอคอนตัวแทน</div>
+        <div className="relative flex items-center justify-center overflow-hidden" style={{ height: 200, background: item.imageUrl ? "#000" : `linear-gradient(150deg, ${C.navyDeep}, ${C.navy})` }}>
+          <button onClick={onClose} className="absolute top-2 right-2 z-10"><X size={18} color={C.white} /></button>
+          {item.imageUrl ? (
+            <img src={item.imageUrl} alt={item.name} className="w-full h-full" style={{ objectFit: "cover" }} />
+          ) : (
+            <>
+              <Package size={64} color={C.accent} strokeWidth={1.25} />
+              <div className="absolute bottom-2 left-2 text-[11px]" style={{ color: "#C9C9CC" }}>ยังไม่มีรูปถ่ายจริงในระบบ — แสดงไอคอนตัวแทน</div>
+            </>
+          )}
+          {editable && (
+            <button onClick={pick} disabled={uploading}
+              className="absolute bottom-2 right-2 z-10 px-2.5 py-1 text-xs font-medium flex items-center gap-1"
+              style={{ background: "rgba(0,0,0,0.55)", color: C.white, border: "1px solid rgba(255,255,255,0.3)" }}>
+              <Plus size={12} /> {uploading ? "กำลังอัปโหลด..." : item.imageUrl ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
         </div>
+        {err && <div className="px-4 pt-2 text-xs" style={{ color: C.crimson }}>{err}</div>}
         <div className="p-4">
           <div className="text-xs font-mono mb-1" style={{ color: C.mute }}>{item.code}</div>
           <div className="font-bold text-base mb-1" style={{ color: C.ink }}>{item.name}</div>
@@ -862,6 +1377,332 @@ function Facility({ items }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   STAFF DIRECTORY — safe subset only (name, dept, role, work phone)
+   Full HR data (ID card, salary, address, DOB, religion) is kept
+   OUT of this system entirely — delivered separately as an
+   internal-only spreadsheet, never wired into the web app or the
+   Google Sheets backend.
+   ============================================================ */
+function StaffDirectory({ staff, setStaffList, user, logAction }) {
+  const [q, setQ] = useState("");
+  const [dept, setDept] = useState("ALL");
+  const [edit, setEdit] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const manager = canManage(user.role);
+  const depts = useMemo(() => Array.from(new Set(staff.map((s) => s.dept))), [staff]);
+  const filtered = staff.filter((s) =>
+    (dept === "ALL" || s.dept === dept) &&
+    (s.name.toLowerCase().includes(q.toLowerCase()) || s.role.toLowerCase().includes(q.toLowerCase()))
+  );
+
+  const saveEdit = (patch) => {
+    setStaffList((prev) => prev.map((s) => (s.id === edit.id ? { ...s, ...patch } : s)));
+    logAction(`แก้ไขบุคลากร ${edit.id} — ${edit.name}`);
+    postToSheets("updateStaff", { id: edit.id, ...patch });
+    setEdit(null);
+  };
+
+  const addStaff = (form) => {
+    setStaffList((prev) => [{ ...form }, ...prev]);
+    logAction(`เพิ่มบุคลากรใหม่ ${form.id} — ${form.name}`);
+    postToSheets("addStaff", form);
+    setShowNew(false);
+  };
+
+  const deleteStaff = (s) => {
+    setStaffList((prev) => prev.filter((x) => x.id !== s.id));
+    logAction(`ลบบุคลากร ${s.id} — ${s.name}`);
+    postToSheets("deleteStaff", { id: s.id });
+    setConfirmDel(null);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="STAFF DIRECTORY" title="ทำเนียบบุคลากรศูนย์กีฬา"
+        sub={`${filtered.length} คน จากทั้งหมด ${staff.length} คน — แสดงเฉพาะชื่อ/หน่วยงาน/หน้าที่/เบอร์ติดต่องาน (ไม่มีข้อมูลอ่อนไหว)`}
+        right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มบุคลากร</Btn> : <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อหรือหน้าที่..."
+            style={{ ...inputStyle, paddingLeft: 32 }} />
+        </div>
+        <select value={dept} onChange={(e) => setDept(e.target.value)} style={{ ...inputStyle, width: 220 }}>
+          <option value="ALL">ทุกหน่วยงาน</option>
+          {depts.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {filtered.map((s) => (
+          <div key={s.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center" style={{ background: C.navy, color: C.white }}>
+                  <User size={15} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate" style={{ color: C.ink }}>{s.name}</div>
+                  <div className="text-xs" style={{ color: C.mute }}>{s.dept}</div>
+                </div>
+              </div>
+              {manager && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button onClick={() => setEdit(s)}><Pencil size={13} style={{ color: C.navy }} /></button>
+                  <button onClick={() => setConfirmDel(s)}><X size={13} style={{ color: C.crimson }} /></button>
+                </div>
+              )}
+            </div>
+            <div className="text-xs mb-1" style={{ color: C.slate }}>{s.role || "-"}</div>
+            <div className="flex items-center justify-between">
+              {s.phone && <div className="text-xs font-mono" style={{ color: C.navySoft }}>{s.phone}</div>}
+              {s.level && <Pill fg={ROLE_META[s.level]?.tint || C.navy} bg="#F2F3F7">{s.level}</Pill>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {edit && (
+        <Modal title={`แก้ไขบุคลากร: ${edit.name}`} onClose={() => setEdit(null)}>
+          <StaffForm initial={edit} onSave={saveEdit} idEditable={false} />
+        </Modal>
+      )}
+      {showNew && (
+        <Modal title="เพิ่มบุคลากรใหม่" onClose={() => setShowNew(false)}>
+          <StaffForm initial={{ id: "", name: "", dept: "", role: "", phone: "", level: "L1" }} onSave={addStaff} idEditable />
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>ต้องการลบ <b>{confirmDel.name}</b> ออกจากทำเนียบบุคลากรใช่หรือไม่? การลบนี้จะลบแถวออกจาก Google Sheet ด้วย และย้อนกลับไม่ได้</p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteStaff(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function StaffForm({ initial, onSave, idEditable }) {
+  const [form, setForm] = useState(initial);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.id.trim() && form.name.trim();
+  return (
+    <div>
+      <Field label="Teacher ID *"><input value={form.id} onChange={set("id")} disabled={!idEditable} style={{ ...inputStyle, opacity: idEditable ? 1 : 0.6 }} /></Field>
+      <Field label="ชื่อ-นามสกุล *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field>
+      <Field label="หน่วยงาน"><input value={form.dept} onChange={set("dept")} style={inputStyle} /></Field>
+      <Field label="หน้าที่รับผิดชอบ"><input value={form.role} onChange={set("role")} style={inputStyle} /></Field>
+      <Field label="เบอร์โทรงาน"><input value={form.phone} onChange={set("phone")} style={inputStyle} /></Field>
+      <Field label="สิทธิ์การใช้งาน (Level)">
+        <select value={form.level} onChange={set("level")} style={inputStyle}>
+          {["L0", "L1", "L2", "L3", "L4"].map((l) => <option key={l} value={l}>{l} — {ROLE_META[l].label}</option>)}
+        </select>
+      </Field>
+      <div className="flex justify-end mt-2">
+        <Btn onClick={() => onSave(form)} disabled={!valid}>บันทึก</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SCHEDULE / WORKLOAD — reads & writes "7.ตารางสอน"
+   L0: no access. L1/L2: own schedule only, read-only.
+   L3: everyone's schedule — add/assign duty, edit, delete,
+   with day+location overlap conflict checking. L4: view all.
+   ============================================================ */
+const DAYS = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
+
+function durationHrs(start, end) {
+  const [sh, sm] = (start || "0:0").split(":").map(Number);
+  const [eh, em] = (end || "0:0").split(":").map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return 0;
+  return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
+}
+
+function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
+  const manager = canManage(user.role);
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [conflict, setConflict] = useState(null); // { form, with }
+
+  const mine = !manager && (user.role === "L1" || user.role === "L2");
+  const rows = mine ? schedule.filter((s) => s.teacher === user.name) : schedule;
+
+  const workload = useMemo(() => {
+    const m = {};
+    schedule.forEach((s) => {
+      m[s.teacher] = m[s.teacher] || { teacher: s.teacher, periods: 0, hours: 0 };
+      m[s.teacher].periods += 1;
+      m[s.teacher].hours += durationHrs(s.start, s.end);
+    });
+    return Object.values(m).sort((a, b) => b.hours - a.hours);
+  }, [schedule]);
+
+  const submitSchedule = async (form, force) => {
+    try {
+      const result = await postToSheetsAwait("addSchedule", { ...form, force });
+      if (result.conflict && !force) { setConflict({ form, with: result.with }); return; }
+      const rec = { id: `SC-${Date.now()}`, ...form };
+      setSchedule((prev) => [...prev, rec]);
+      logAction(`เพิ่มตารางสอน/มอบหมายงาน — ${form.teacher} วัน${form.day} ${form.start}-${form.end}`);
+      setShowNew(false); setConflict(null);
+    } catch (e) {
+      alert(e.message || "บันทึกไม่สำเร็จ");
+    }
+  };
+
+  const deleteRow = async (row) => {
+    try {
+      await postToSheetsAwait("deleteSchedule", { row: row._row });
+      setSchedule((prev) => prev.filter((x) => x.id !== row.id));
+      logAction(`ลบตารางสอน — ${row.teacher} วัน${row.day} ${row.start}-${row.end}`);
+    } catch (e) { alert(e.message || "ลบไม่สำเร็จ"); }
+    setConfirmDel(null);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางสอน & ภาระงาน"}
+        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบทั้งหมด — มอบหมายงานหรือดูแลห้องเพิ่มเข้าตารางได้ที่นี่`}
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มคาบ/มอบหมายงาน</Btn>} />
+
+      {rows.length === 0 ? (
+        <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
+          {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางสอนในระบบ — กด \"เพิ่มคาบ/มอบหมายงาน\" เพื่อเริ่มบันทึก"}
+        </div>
+      ) : (
+        <div style={{ border: `1px solid ${C.line}`, background: C.white }} className="mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: C.navy, color: C.white }}>
+                {["วัน", "เวลา", "วิชา/กิจกรรม", ...(mine ? [] : ["ครูผู้สอน"]), "สถานที่", "กลุ่ม/ระดับชั้น", ""].map((h) => (
+                  <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((s) => (
+                <tr key={s.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-3 py-2 text-xs">{s.day}</td>
+                  <td className="px-3 py-2 text-xs font-mono">{s.start}–{s.end}</td>
+                  <td className="px-3 py-2 text-sm font-medium" style={{ color: s.subject === "ดูแลห้อง" ? C.crimson : C.ink }}>{s.subject}</td>
+                  {!mine && <td className="px-3 py-2 text-xs">{s.teacher}</td>}
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.loc}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.group}</td>
+                  <td className="px-3 py-2">{manager && <button onClick={() => setConfirmDel(s)}><X size={14} style={{ color: C.crimson }} /></button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {manager && workload.length > 0 && (
+        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
+          <div className="grid grid-cols-3 gap-3">
+            {workload.map((w) => (
+              <div key={w.teacher} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${C.line}` }}>
+                <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
+                <span className="text-xs shrink-0" style={{ color: C.slate }}>{w.periods} คาบ · {w.hours.toFixed(1)} ชม./สัปดาห์</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showNew && (
+        <Modal title="เพิ่มคาบสอน หรือ มอบหมายงาน" onClose={() => setShowNew(false)} wide>
+          <ScheduleForm staffList={staffList} onSubmit={(form) => submitSchedule(form, false)} />
+        </Modal>
+      )}
+      {conflict && (
+        <Modal title="เวลาซ้อนทับ ⚠️" onClose={() => setConflict(null)}>
+          <p className="text-sm mb-3" style={{ color: C.ink }}>
+            ช่วงเวลานี้ที่ <b>{conflict.form.loc}</b> วัน<b>{conflict.form.day}</b> ซ้อนกับ:
+          </p>
+          <div className="p-3 mb-4 text-sm" style={{ background: C.badBg, color: C.crimsonDeep }}>
+            {conflict.with.teacher} — {conflict.with.subject} ({conflict.with.start}–{conflict.with.end})
+          </div>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConflict(null)}>ยกเลิก แก้เวลาใหม่</Btn>
+            <Btn variant="crimson" onClick={() => submitSchedule(conflict.form, true)}>ยืนยันบันทึกทับซ้อน</Btn>
+          </div>
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>ลบคาบ <b>{confirmDel.subject}</b> ของ <b>{confirmDel.teacher}</b> วัน{confirmDel.day} {confirmDel.start}-{confirmDel.end} ใช่หรือไม่?</p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteRow(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ScheduleForm({ staffList, onSubmit }) {
+  const [form, setForm] = useState({ day: DAYS[0], start: "08:00", end: "09:00", subject: "", teacher: "", loc: "", group: "", equipment: "", qty: "", note: "" });
+  const [isDuty, setIsDuty] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.teacher.trim() && form.loc.trim() && form.subject.trim();
+  return (
+    <div>
+      <div className="flex items-center gap-4 mb-3">
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: C.slate }}>
+          <input type="radio" checked={!isDuty} onChange={() => { setIsDuty(false); setForm((f) => ({ ...f, subject: "" })); }} /> คาบสอนปกติ
+        </label>
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: C.slate }}>
+          <input type="radio" checked={isDuty} onChange={() => { setIsDuty(true); setForm((f) => ({ ...f, subject: "ดูแลห้อง" })); }} /> มอบหมายดูแลห้อง/สถานที่ (นับเป็น workload)
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4">
+        <Field label="ครูผู้รับผิดชอบ *">
+          <select value={form.teacher} onChange={set("teacher")} style={inputStyle}>
+            <option value="">— เลือกบุคลากร —</option>
+            {staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+          </select>
+        </Field>
+        <Field label="สถานที่ *">
+          <select value={form.loc} onChange={set("loc")} style={inputStyle}>
+            <option value="">— เลือกสถานที่ —</option>
+            {LOCATIONS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
+          </select>
+        </Field>
+        <Field label="วัน">
+          <select value={form.day} onChange={set("day")} style={inputStyle}>
+            {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="เวลาเริ่ม"><input type="time" value={form.start} onChange={set("start")} style={inputStyle} /></Field>
+          <Field label="เวลาจบ"><input type="time" value={form.end} onChange={set("end")} style={inputStyle} /></Field>
+        </div>
+        <div className="col-span-2">
+          <Field label={isDuty ? "รายละเอียดงาน" : "วิชา/กิจกรรม *"}>
+            <input value={form.subject} onChange={set("subject")} disabled={isDuty} style={{ ...inputStyle, opacity: isDuty ? 0.7 : 1 }} placeholder={isDuty ? "ดูแลห้อง" : "เช่น พลศึกษา ป.4"} />
+          </Field>
+        </div>
+        <Field label="กลุ่ม/ระดับชั้น"><input value={form.group} onChange={set("group")} style={inputStyle} /></Field>
+        <Field label="อุปกรณ์ที่ใช้ (ถ้ามี)"><input value={form.equipment} onChange={set("equipment")} style={inputStyle} /></Field>
+        <div className="col-span-2">
+          <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
+        </div>
+        <div className="col-span-2 flex justify-end mt-2">
+          <Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn>
+        </div>
       </div>
     </div>
   );
@@ -983,17 +1824,28 @@ function BorrowForm({ available, onSubmit }) {
 const SEVERITY = ["น้อย", "ปานกลาง", "สูง"];
 const MAINT_ACTIONS = ["Repair", "Waiting Part", "Replace", "Write-off"];
 
-function DamageMaint({ user, items, setItems, damages, setDamages, logAction }) {
+function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, logAction }) {
   const [showNew, setShowNew] = useState(false);
   const manage = canEdit(user.role) || canManage(user.role);
 
-  const submit = ({ itemId, qty, symptom }) => {
+  const submit = async ({ itemId, qty, symptom }) => {
     const item = items.find((i) => i.id === itemId);
     const rec = { id: `DM-${Date.now()}`, date: "2026-09-15", itemId, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name, severity: "ปานกลาง", status: "รอตรวจสอบ", action: "", cost: 0 };
     setDamages((p) => [rec, ...p]);
     logAction(`แจ้งชำรุด ${item.code} จำนวน ${qty}`);
-    postToSheets("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name });
     setShowNew(false);
+    try {
+      const result = await postToSheetsAwait("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name });
+      if (result.taskId) {
+        setTasks((prev) => [{
+          id: result.taskId, title: `ซ่อม/ตรวจสอบ: ${item.name} (${item.code})`, description: symptom,
+          priority: "HIGH", status: "TODO", dueDate: "", dueTime: "", assignee: "", createdBy: user.name,
+          location: "", relatedResource: item.code, relatedFacility: "", relatedBorrowId: "",
+          relatedDamageId: result.damageId || "", taskType: "maintenance", comments: "",
+          createdDate: new Date().toISOString(), completedDate: "",
+        }, ...prev]);
+      }
+    } catch (e) { /* damage already saved locally; task mirror is best-effort */ }
   };
 
   const advance = (d, patch) => {
@@ -1284,6 +2136,873 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   WORK MANAGEMENT — task list, filters, detail/comments, team workload
+   L0: no access. L1/L2: their own tasks (assignee or creator), status
+   updates only. L3: everyone's tasks — create, assign/reassign, filter,
+   team workload. L4: everyone's tasks, read-only.
+   ============================================================ */
+const TASK_TYPE_LABEL = { general: "ทั่วไป", maintenance: "ซ่อมบำรุง", "follow-up": "ติดตามการคืน", inspection: "ตรวจสอบ", approval: "อนุมัติ" };
+const TASK_BUCKETS = [
+  ["today", "วันนี้"], ["overdue", "เกินกำหนด"], ["upcoming", "กำลังจะถึง"], ["todo", "ยังไม่กำหนด"], ["completed", "เสร็จแล้ว"],
+];
+
+function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, patchTask, logAction }) {
+  const manager = canManage(user.role);
+  const readOnly = user.role === "L4";
+  const personal = user.role === "L1" || user.role === "L2";
+
+  const [bucket, setBucket] = useState("ALL");
+  const [priorityF, setPriorityF] = useState("ALL");
+  const [assigneeF, setAssigneeF] = useState("ALL");
+  const [q, setQ] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [detail, setDetail] = useState(null);
+
+  const base = personal ? tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name) : tasks;
+  const rows = base.filter((t) =>
+    (bucket === "ALL" || taskBucket(t) === bucket) &&
+    (priorityF === "ALL" || t.priority === priorityF) &&
+    (assigneeF === "ALL" || t.assignee === assigneeF) &&
+    (t.title.toLowerCase().includes(q.toLowerCase()) || (t.location || "").toLowerCase().includes(q.toLowerCase()))
+  ).sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+
+  const counts = useMemo(() => {
+    const c = { today: 0, overdue: 0, upcoming: 0, todo: 0, completed: 0 };
+    base.forEach((t) => { const b = taskBucket(t); if (c[b] !== undefined) c[b]++; });
+    return c;
+  }, [base]);
+
+  const workload = useMemo(() => {
+    if (personal) return [];
+    const m = {};
+    tasks.forEach((t) => {
+      const who = t.assignee || "ยังไม่มอบหมาย";
+      m[who] = m[who] || { name: who, assigned: 0, inProgress: 0, completed: 0, overdue: 0 };
+      m[who].assigned += 1;
+      if (t.status === "IN_PROGRESS") m[who].inProgress += 1;
+      if (t.status === "COMPLETED") m[who].completed += 1;
+      if (taskBucket(t) === "overdue") m[who].overdue += 1;
+    });
+    return Object.values(m).sort((a, b) => b.assigned - a.assigned);
+  }, [tasks, personal]);
+
+  const assignees = useMemo(() => Array.from(new Set(tasks.map((t) => t.assignee).filter(Boolean))), [tasks]);
+
+  const submitNew = async (form) => {
+    await createTask(form);
+    setShowNew(false);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="WORK MANAGEMENT" title={personal ? "งานของฉัน" : readOnly ? "ภาพรวมงานทั้งหมด" : "จัดการงาน"}
+        sub={`${rows.length} งาน${personal ? " ที่มอบหมายให้คุณหรือคุณสร้างไว้" : "ในระบบ"}`}
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>สร้างงานใหม่</Btn>} />
+
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <button onClick={() => setBucket("ALL")} className="px-3 py-1.5 text-xs font-medium" style={{ background: bucket === "ALL" ? C.navy : C.white, color: bucket === "ALL" ? C.white : C.ink, border: `1px solid ${C.line}` }}>ทั้งหมด ({base.length})</button>
+        {TASK_BUCKETS.map(([key, label]) => (
+          <button key={key} onClick={() => setBucket(key)} className="px-3 py-1.5 text-xs font-medium" style={{ background: bucket === key ? C.navy : C.white, color: bucket === key ? C.white : C.ink, border: `1px solid ${C.line}` }}>{label} ({counts[key] || 0})</button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={14} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่องาน/สถานที่..." style={{ ...inputStyle, paddingLeft: 30 }} />
+        </div>
+        <select value={priorityF} onChange={(e) => setPriorityF(e.target.value)} style={{ ...inputStyle, width: 150 }}>
+          <option value="ALL">ทุกความสำคัญ</option>
+          {Object.keys(PRIORITY_META).map((p) => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
+        </select>
+        {!personal && (
+          <select value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)} style={{ ...inputStyle, width: 180 }}>
+            <option value="ALL">ทุกคน</option>
+            {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่มีงานในหมวดนี้</div>
+      ) : (
+        <div className="space-y-2 mb-6">
+          {rows.map((t) => <TaskRow key={t.id} t={t} onOpen={() => setDetail(t)} showAssignee={!personal} />)}
+        </div>
+      )}
+
+      {!personal && workload.length > 0 && (
+        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><Users size={15} /> ภาระงานทีม (Team Workload)</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ color: C.slate }}>
+                {["ผู้รับผิดชอบ", "มอบหมาย", "กำลังทำ", "เสร็จแล้ว", "เกินกำหนด", "อัตราเสร็จ"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs font-semibold">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {workload.map((w) => (
+                <tr key={w.name} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-2 py-2">{w.name}</td>
+                  <td className="px-2 py-2">{w.assigned}</td>
+                  <td className="px-2 py-2">{w.inProgress}</td>
+                  <td className="px-2 py-2" style={{ color: C.ok }}>{w.completed}</td>
+                  <td className="px-2 py-2" style={{ color: w.overdue > 0 ? C.crimson : C.mute, fontWeight: w.overdue > 0 ? 600 : 400 }}>{w.overdue}</td>
+                  <td className="px-2 py-2 w-32">
+                    <div className="h-1.5 w-full" style={{ background: C.line }}>
+                      <div className="h-1.5" style={{ width: `${w.assigned ? Math.round((w.completed / w.assigned) * 100) : 0}%`, background: C.ok }} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showNew && (
+        <Modal title="สร้างงานใหม่" onClose={() => setShowNew(false)} wide>
+          <TaskForm staffList={staffList} items={items} onSubmit={submitNew} />
+        </Modal>
+      )}
+      {detail && (
+        <TaskDetailModal t={detail} user={user} manager={manager} readOnly={readOnly} staffList={staffList}
+          onClose={() => setDetail(null)} patchTask={patchTask} />
+      )}
+    </div>
+  );
+}
+
+function TaskForm({ staffList, items, onSubmit }) {
+  const [form, setForm] = useState({ title: "", description: "", priority: "NORMAL", status: "TODO", dueDate: "", dueTime: "", assignee: "", location: "", relatedResource: "", taskType: "general" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.title.trim();
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <div className="col-span-2"><Field label="หัวข้องาน *"><input value={form.title} onChange={set("title")} style={inputStyle} /></Field></div>
+      <div className="col-span-2"><Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
+      <Field label="ผู้รับผิดชอบ">
+        <select value={form.assignee} onChange={set("assignee")} style={inputStyle}>
+          <option value="">— ยังไม่มอบหมาย —</option>
+          {staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+        </select>
+      </Field>
+      <Field label="ประเภทงาน">
+        <select value={form.taskType} onChange={set("taskType")} style={inputStyle}>
+          {Object.entries(TASK_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </Field>
+      <Field label="ลำดับความสำคัญ">
+        <select value={form.priority} onChange={set("priority")} style={inputStyle}>
+          {Object.entries(PRIORITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+        </select>
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="กำหนดเสร็จ (วันที่)"><input type="date" value={form.dueDate} onChange={set("dueDate")} style={inputStyle} /></Field>
+        <Field label="เวลา"><input type="time" value={form.dueTime} onChange={set("dueTime")} style={inputStyle} /></Field>
+      </div>
+      <Field label="สถานที่"><input value={form.location} onChange={set("location")} style={inputStyle} placeholder="เช่น สนามฟุตบอล" /></Field>
+      <Field label="อุปกรณ์ที่เกี่ยวข้อง (ถ้ามี)">
+        <select value={form.relatedResource} onChange={set("relatedResource")} style={inputStyle}>
+          <option value="">— ไม่ระบุ —</option>
+          {items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}
+        </select>
+      </Field>
+      <div className="col-span-2 flex justify-end mt-2">
+        <Btn onClick={() => onSubmit(form)} disabled={!valid}>สร้างงาน</Btn>
+      </div>
+    </div>
+  );
+}
+
+function TaskDetailModal({ t, user, manager, readOnly, staffList, onClose, patchTask }) {
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const sm = taskStatusDisplay(t);
+  const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
+  const canAct = !readOnly && (manager || t.assignee === user.name);
+
+  const doPatch = async (patch) => {
+    setSaving(true);
+    try { await patchTask(t.id, patch); onClose(); } finally { setSaving(false); }
+  };
+  const submitComment = async () => {
+    if (!comment.trim()) return;
+    setSaving(true);
+    try { await patchTask(t.id, { addComment: comment, commentBy: user.name }); setComment(""); onClose(); } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title={t.title} onClose={onClose} wide>
+      <div className="flex items-center gap-2 mb-4">
+        <Pill fg={pm.fg} bg={pm.bg}>{pm.label}</Pill>
+        <Pill fg={sm.fg} bg={sm.bg}>{sm.label}</Pill>
+        {t.taskType && <Pill fg={C.navySoft} bg="#F2F3F7">{TASK_TYPE_LABEL[t.taskType] || t.taskType}</Pill>}
+      </div>
+      {t.description && <p className="text-sm mb-4" style={{ color: C.ink }}>{t.description}</p>}
+      <div className="grid grid-cols-2 gap-3 text-xs mb-4" style={{ color: C.slate }}>
+        <div>ผู้รับผิดชอบ: <b style={{ color: C.ink }}>{t.assignee || "ยังไม่มอบหมาย"}</b></div>
+        <div>ผู้สร้าง: <b style={{ color: C.ink }}>{t.createdBy || "-"}</b></div>
+        <div>กำหนดเสร็จ: <b style={{ color: C.ink }}>{t.dueDate || "-"} {t.dueTime}</b></div>
+        <div>สถานที่: <b style={{ color: C.ink }}>{t.location || "-"}</b></div>
+        {t.relatedResource && <div>อุปกรณ์ที่เกี่ยวข้อง: <b style={{ color: C.ink }}>{t.relatedResource}</b></div>}
+        {t.relatedDamageId && <div>อ้างอิงการแจ้งชำรุด: <b style={{ color: C.ink }}>{t.relatedDamageId}</b></div>}
+        {t.relatedBorrowId && <div>อ้างอิงการยืม: <b style={{ color: C.ink }}>{t.relatedBorrowId}</b></div>}
+        <div>สร้างเมื่อ: <b style={{ color: C.ink }}>{t.createdDate ? new Date(t.createdDate).toLocaleDateString("th-TH") : "-"}</b></div>
+        {t.completedDate && <div>เสร็จเมื่อ: <b style={{ color: C.ok }}>{new Date(t.completedDate).toLocaleDateString("th-TH")}</b></div>}
+      </div>
+
+      {t.comments && (
+        <div className="mb-4">
+          <div className="text-xs font-semibold mb-1.5" style={{ color: C.slate }}>ประวัติความคืบหน้า</div>
+          <div className="p-2.5 text-xs whitespace-pre-line" style={{ background: C.paper, border: `1px solid ${C.line}`, color: C.ink, maxHeight: 140, overflowY: "auto" }}>{t.comments}</div>
+        </div>
+      )}
+
+      {canAct && (
+        <>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {t.status === "TODO" && <Btn small onClick={() => doPatch({ status: "IN_PROGRESS" })} disabled={saving} icon={Play}>เริ่มงาน</Btn>}
+            {t.status !== "COMPLETED" && <Btn small variant="ghost" onClick={() => doPatch({ status: "COMPLETED" })} disabled={saving} icon={CheckCircle2}>ทำเครื่องหมายเสร็จ</Btn>}
+            {t.status !== "WAITING" && t.status !== "COMPLETED" && <Btn small variant="ghost" onClick={() => doPatch({ status: "WAITING" })} disabled={saving}>รออะไหล่/ข้อมูล</Btn>}
+            {manager && t.status !== "CANCELLED" && t.status !== "COMPLETED" && <Btn small variant="crimson" onClick={() => doPatch({ status: "CANCELLED" })} disabled={saving} icon={X}>ยกเลิกงาน</Btn>}
+          </div>
+          {manager && (
+            <Field label="มอบหมาย / เปลี่ยนผู้รับผิดชอบ">
+              <select defaultValue={t.assignee} onChange={(e) => doPatch({ assignee: e.target.value })} style={inputStyle}>
+                <option value="">— ยังไม่มอบหมาย —</option>
+                {staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label="เพิ่มความคิดเห็น / บันทึกความคืบหน้า">
+            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} style={inputStyle} />
+          </Field>
+          <div className="flex justify-end">
+            <Btn onClick={submitComment} disabled={saving || !comment.trim()} icon={MessageSquare}>บันทึกความคิดเห็น</Btn>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+/* ============================================================
+   CALENDAR — combines My Tasks, ตารางสอน (schedule), org-wide
+   activities, and preventive-maintenance reminders into one view.
+   ============================================================ */
+const DAY_TO_WEEKDAY = { "อาทิตย์": 0, "จันทร์": 1, "อังคาร": 2, "พุธ": 3, "พฤหัสบดี": 4, "ศุกร์": 5, "เสาร์": 6 };
+const CAL_LAYERS = [
+  { key: "tasks", label: "งานของฉัน (My Tasks)", color: C.crimson },
+  { key: "schedule", label: "ตารางใช้สนาม/ศูนย์กีฬา", color: C.navy },
+  { key: "org", label: "กิจกรรมฝ่ายกิจกรรม/องค์กร", color: "#B8860B" },
+  { key: "pm", label: "นัดซ่อมบำรุงล่วงหน้า", color: "#C2660D" },
+];
+
+function combineDate(dateStr, timeStr) {
+  const [y, m, d] = (dateStr || "").split("-").map(Number);
+  if (!y) return null;
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  if (timeStr) {
+    const [hh, mm] = timeStr.split(":").map(Number);
+    dt.setHours(hh || 0, mm || 0);
+  }
+  return dt;
+}
+
+function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly, userName }) {
+  const events = [];
+  const myTasks = mineOnly ? tasks.filter((t) => t.assignee === userName || t.createdBy === userName) : tasks;
+  myTasks.forEach((t) => {
+    if (!t.dueDate) return;
+    const start = combineDate(t.dueDate, t.dueTime);
+    if (!start) return;
+    const end = t.dueTime ? new Date(start.getTime() + 60 * 60 * 1000) : start;
+    events.push({ id: `T-${t.id}`, title: `📋 ${t.title}`, start, end, allDay: !t.dueTime, layer: "tasks", raw: t });
+  });
+
+  // schedule repeats weekly — project onto -1..+6 weeks from today for a usable calendar window
+  const base = new Date(2026, 8, 17); // 2026-09-17, Thursday — matches TODAY_ISO
+  const monday = new Date(base); monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+  for (let w = -1; w <= 6; w++) {
+    schedule.forEach((s) => {
+      const wd = DAY_TO_WEEKDAY[s.day];
+      if (wd === undefined) return;
+      const d = new Date(monday); d.setDate(monday.getDate() + w * 7 + ((wd + 6) % 7));
+      const start = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.start);
+      const end = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.end);
+      if (!start) return;
+      events.push({ id: `S-${s.id}-${w}`, title: `🏟️ ${s.subject} — ${s.teacher}`, start, end: end || start, allDay: false, layer: "schedule", raw: s });
+    });
+  }
+
+  orgEvents.forEach((e) => {
+    const start = combineDate(e.start);
+    const end = combineDate(e.end) || start;
+    if (!start) return;
+    events.push({ id: `O-${e.id}`, title: `🎪 ${e.title}`, start, end, allDay: true, layer: "org", raw: e });
+  });
+
+  pmSchedule.forEach((p) => {
+    const start = combineDate(p.nextDate);
+    if (!start) return;
+    events.push({ id: `P-${p.id}`, title: `🔧 นัดซ่อม: ${p.refName}`, start, end: start, allDay: true, layer: "pm", raw: p });
+  });
+
+  return events;
+}
+
+function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEvents, setTab, logAction }) {
+  const [visible, setVisible] = useState({ tasks: true, schedule: true, org: true, pm: true });
+  const [view, setView] = useState("month");
+  const [selected, setSelected] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const mineOnly = user.role === "L1" || user.role === "L2";
+  const manager = canManage(user.role);
+
+  const allEvents = useMemo(
+    () => buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly, userName: user.name }),
+    [tasks, schedule, orgEvents, pmSchedule, mineOnly, user.name]
+  );
+  const events = allEvents.filter((e) => visible[e.layer]);
+
+  const addEvent = async (form) => {
+    const r = await postToSheetsAwait("addOrgEvent", form);
+    setOrgEvents((prev) => [...prev, { id: r.id, ...form }]);
+    logAction(`เพิ่มกิจกรรมองค์กร: ${form.title}`);
+    setShowNew(false);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว ตารางใช้สนาม กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว"
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มกิจกรรมองค์กร</Btn>} />
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        {CAL_LAYERS.map((l) => (
+          <label key={l.key} className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: C.slate }}>
+            <input type="checkbox" checked={visible[l.key]} onChange={() => setVisible((v) => ({ ...v, [l.key]: !v[l.key] }))} />
+            <span className="w-2.5 h-2.5 inline-block" style={{ background: l.color }} /> {l.label}
+          </label>
+        ))}
+      </div>
+      <div className="p-3" style={{ background: C.white, border: `1px solid ${C.line}`, height: 640 }}>
+        <BigCalendar
+          localizer={calendarLocalizer}
+          events={events}
+          startAccessor="start"
+          endAccessor="end"
+          view={view}
+          onView={setView}
+          views={["month", "week", "day", "agenda"]}
+          style={{ height: "100%", fontFamily: FONT }}
+          onSelectEvent={(e) => setSelected(e)}
+          eventPropGetter={(e) => ({ style: { background: CAL_LAYERS.find((l) => l.key === e.layer)?.color || C.navy, border: "none", fontSize: 12 } })}
+          messages={{ month: "เดือน", week: "สัปดาห์", day: "วัน", agenda: "รายการ", today: "วันนี้", previous: "ก่อนหน้า", next: "ถัดไป", noEventsInRange: "ไม่มีรายการในช่วงนี้" }}
+        />
+      </div>
+      {selected && (
+        <Modal title={selected.title} onClose={() => setSelected(null)}>
+          <div className="text-sm space-y-1.5" style={{ color: C.ink }}>
+            <div>เวลา: {selected.allDay ? "ทั้งวัน" : `${selected.start.toLocaleString("th-TH")} – ${selected.end.toLocaleTimeString("th-TH")}`}</div>
+            {selected.layer === "tasks" && (
+              <>
+                <div>ผู้รับผิดชอบ: {selected.raw.assignee || "-"}</div>
+                <div>สถานที่: {selected.raw.location || "-"}</div>
+                <button onClick={() => setTab("tasks")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้างาน →</button>
+              </>
+            )}
+            {selected.layer === "schedule" && (<><div>สถานที่: {selected.raw.loc}</div><div>กลุ่ม/ระดับชั้น: {selected.raw.group || "-"}</div></>)}
+            {selected.layer === "org" && (<><div>หน่วยงาน: {selected.raw.dept}</div><div>สถานที่: {selected.raw.loc || "-"}</div><div>{selected.raw.description}</div></>)}
+            {selected.layer === "pm" && (<><div>รอบซ่อม: {selected.raw.cycle}</div><div>ผู้รับผิดชอบ: {selected.raw.owner || "-"}</div><button onClick={() => setTab("maintenance")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้าซ่อมบำรุง →</button></>)}
+          </div>
+        </Modal>
+      )}
+      {showNew && (
+        <Modal title="เพิ่มกิจกรรมองค์กร" onClose={() => setShowNew(false)}>
+          <OrgEventForm onSubmit={addEvent} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function OrgEventForm({ onSubmit }) {
+  const [form, setForm] = useState({ title: "", start: "", end: "", allDay: true, dept: "ฝ่ายกิจกรรม", owner: "", loc: "", description: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.title.trim() && form.start;
+  return (
+    <div>
+      <Field label="ชื่องาน *"><input value={form.title} onChange={set("title")} style={inputStyle} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="วันที่เริ่ม *"><input type="date" value={form.start} onChange={set("start")} style={inputStyle} /></Field>
+        <Field label="วันที่สิ้นสุด"><input type="date" value={form.end} onChange={set("end")} style={inputStyle} /></Field>
+      </div>
+      <Field label="หน่วยงานเจ้าของ"><input value={form.dept} onChange={set("dept")} style={inputStyle} /></Field>
+      <Field label="ผู้รับผิดชอบ"><input value={form.owner} onChange={set("owner")} style={inputStyle} /></Field>
+      <Field label="สถานที่"><input value={form.loc} onChange={set("loc")} style={inputStyle} /></Field>
+      <Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2">
+        <Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   MAINTENANCE TRACKING — repair history log + preventive schedule
+   ============================================================ */
+function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSchedule, staffList, logAction }) {
+  const manager = canEdit(user.role) || canManage(user.role);
+  const [showRepair, setShowRepair] = useState(false);
+  const [showPM, setShowPM] = useState(false);
+
+  const addRepair = async (form) => {
+    const r = await postToSheetsAwait("addRepair", form);
+    setRepairs((prev) => [{ id: r.id, ...form }, ...prev]);
+    logAction(`บันทึกประวัติซ่อม: ${form.refName} (${form.cost.toLocaleString()} บาท)`);
+    setShowRepair(false);
+  };
+  const addPM = async (form) => {
+    const r = await postToSheetsAwait("addPM", form);
+    setPmSchedule((prev) => [{ id: r.id, ...form }, ...prev]);
+    logAction(`ตั้งนัดซ่อมล่วงหน้า: ${form.refName} วันที่ ${form.nextDate}`);
+    setShowPM(false);
+  };
+  const totalCost = repairs.reduce((s, r) => s + r.cost, 0);
+
+  return (
+    <div>
+      <SectionHead eyebrow="MAINTENANCE" title="ซ่อมบำรุง" sub={`ประวัติซ่อม ${repairs.length} ครั้ง · รวม ${totalCost.toLocaleString()} บาท`}
+        right={manager && (
+          <div className="flex gap-2">
+            <Btn variant="ghost" onClick={() => setShowPM(true)} icon={CalendarClock}>ตั้งนัดซ่อมล่วงหน้า</Btn>
+            <Btn onClick={() => setShowRepair(true)} icon={Plus}>บันทึกประวัติซ่อม</Btn>
+          </div>
+        )} />
+
+      <div className="mb-4">
+        <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>แผนซ่อมล่วงหน้า (Preventive Maintenance)</h3>
+        {pmSchedule.length === 0 ? (
+          <div className="p-4 text-center text-sm mb-4" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีนัดซ่อมล่วงหน้า</div>
+        ) : (
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {pmSchedule.map((p) => (
+              <div key={p.id} className="p-3" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid #C2660D` }}>
+                <div className="text-sm font-semibold" style={{ color: C.ink }}>{p.refName}</div>
+                <div className="text-xs mt-1" style={{ color: C.slate }}>รอบ: {p.cycle || "-"} · นัดถัดไป: <b>{p.nextDate}</b></div>
+                <div className="text-xs" style={{ color: C.mute }}>ผู้รับผิดชอบ: {p.owner || "-"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>ประวัติการซ่อม</h3>
+      {repairs.length === 0 ? (
+        <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีประวัติการซ่อมในระบบ</div>
+      ) : (
+        <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: C.navy, color: C.white }}>
+                {["วันที่ซ่อม", "อุปกรณ์/สถานที่", "รายละเอียด", "ค่าใช้จ่าย", "ผู้รับผิดชอบ", "ร้าน/ช่าง"].map((h) => <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {repairs.map((r) => (
+                <tr key={r.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-3 py-2 text-xs">{r.date}</td>
+                  <td className="px-3 py-2 text-sm">{r.refName}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{r.description}</td>
+                  <td className="px-3 py-2 text-xs font-mono">{r.cost.toLocaleString()} ฿</td>
+                  <td className="px-3 py-2 text-xs">{r.owner}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.mute }}>{r.vendor || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showRepair && (
+        <Modal title="บันทึกประวัติซ่อม" onClose={() => setShowRepair(false)} wide>
+          <RepairForm items={items} staffList={staffList} onSubmit={addRepair} />
+        </Modal>
+      )}
+      {showPM && (
+        <Modal title="ตั้งนัดซ่อมล่วงหน้า" onClose={() => setShowPM(false)} wide>
+          <PMForm items={items} staffList={staffList} onSubmit={addPM} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function RepairForm({ items, staffList, onSubmit }) {
+  const [form, setForm] = useState({ ref: "", refName: "", date: "2026-09-17", description: "", cost: 0, owner: "", vendor: "", receiptUrl: "", status: "เสร็จสิ้น" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const pickItem = (e) => { const it = items.find((i) => i.code === e.target.value); setForm((f) => ({ ...f, ref: it?.code || "", refName: it ? `${it.name} (${it.code})` : "" })); };
+  const valid = form.refName.trim() && form.date;
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
+        <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
+      </Field>
+      <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
+      <Field label="วันที่ซ่อม"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+      <Field label="ค่าใช้จ่าย (บาท)"><input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <Field label="ผู้รับผิดชอบ">
+        <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+      </Field>
+      <Field label="ร้าน/ช่าง"><input value={form.vendor} onChange={set("vendor")} style={inputStyle} /></Field>
+      <div className="col-span-2"><Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
+      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn></div>
+    </div>
+  );
+}
+
+function PMForm({ items, staffList, onSubmit }) {
+  const [form, setForm] = useState({ ref: "", refName: "", cycle: "ทุก 6 เดือน", nextDate: "", owner: "", note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const pickItem = (e) => { const it = items.find((i) => i.code === e.target.value); setForm((f) => ({ ...f, ref: it?.code || "", refName: it ? `${it.name} (${it.code})` : "" })); };
+  const valid = form.refName.trim() && form.nextDate;
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
+        <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
+      </Field>
+      <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
+      <Field label="รอบซ่อม"><input value={form.cycle} onChange={set("cycle")} style={inputStyle} placeholder="เช่น ทุก 6 เดือน" /></Field>
+      <Field label="วันนัดถัดไป *"><input type="date" value={form.nextDate} onChange={set("nextDate")} style={inputStyle} /></Field>
+      <Field label="ผู้รับผิดชอบ">
+        <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+      </Field>
+      <div className="col-span-2"><Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field></div>
+      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึกนัดหมาย — จะขึ้นบนปฏิทินกลางอัตโนมัติ</Btn></div>
+    </div>
+  );
+}
+
+/* ============================================================
+   KNOWLEDGE BASE — documents/manuals/policies, files live in Drive
+   ============================================================ */
+const DOC_CATEGORIES = ["คู่มือการใช้งาน", "กฎระเบียบการยืมอุปกรณ์", "ขั้นตอนแจ้งซ่อม", "ขั้นตอนเบิกจ่าย", "อื่นๆ"];
+
+function docToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result.split(",")[1]);
+    reader.onerror = () => reject(new Error("อ่านไฟล์ไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function KnowledgeBase({ user, docs, setDocs, logAction }) {
+  const manager = canManage(user.role);
+  const [cat, setCat] = useState("ALL");
+  const [q, setQ] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const filtered = docs.filter((d) => (cat === "ALL" || d.category === cat) && d.title.toLowerCase().includes(q.toLowerCase()));
+
+  const upload = async ({ title, category, file }) => {
+    if (!API_URL) { alert("ยังไม่ได้เชื่อมต่อ Google Sheets backend"); return; }
+    const base64 = await docToBase64(file);
+    const r = await postToSheetsAwait("uploadDoc", { title, category, filename: file.name, mimeType: file.type, base64, uploadedBy: user.name });
+    setDocs((prev) => [{ id: r.id, title, category, url: r.url, uploadedBy: user.name, updatedDate: "2026-09-17", version: "1" }, ...prev]);
+    logAction(`อัปโหลดเอกสาร: ${title}`);
+    setShowNew(false);
+  };
+  const del = async (d) => {
+    await postToSheetsAwait("deleteDoc", { id: d.id });
+    setDocs((prev) => prev.filter((x) => x.id !== d.id));
+    logAction(`ลบเอกสาร: ${d.title}`);
+    setConfirmDel(null);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ ขั้นตอนการทำงานของศูนย์กีฬา"
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Upload}>อัปโหลดเอกสาร</Btn>} />
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาเอกสาร..." style={{ ...inputStyle, paddingLeft: 32 }} />
+        </div>
+        <select value={cat} onChange={(e) => setCat(e.target.value)} style={{ ...inputStyle, width: 220 }}>
+          <option value="ALL">ทุกหมวด</option>
+          {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีเอกสารในระบบ</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {filtered.map((d) => (
+            <div key={d.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="flex items-start gap-3 mb-2">
+                <BookOpen size={18} style={{ color: C.navy, marginTop: 2 }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold truncate" style={{ color: C.ink }}>{d.title}</div>
+                  <div className="text-xs" style={{ color: C.mute }}>{d.category} · v{d.version}</div>
+                </div>
+              </div>
+              <div className="text-xs mb-3" style={{ color: C.slate }}>อัปโหลดโดย {d.uploadedBy} · {d.updatedDate}</div>
+              <div className="flex items-center justify-between">
+                <a href={d.url} target="_blank" rel="noreferrer" className="text-xs font-semibold flex items-center gap-1" style={{ color: C.navy }}>เปิดเอกสาร <ExternalLink size={12} /></a>
+                {manager && <button onClick={() => setConfirmDel(d)}><X size={14} style={{ color: C.crimson }} /></button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {showNew && (
+        <Modal title="อัปโหลดเอกสาร" onClose={() => setShowNew(false)}>
+          <DocUploadForm onSubmit={upload} />
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>ลบเอกสาร <b>{confirmDel.title}</b> ใช่หรือไม่?</p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => del(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function DocUploadForm({ onSubmit }) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState(DOC_CATEGORIES[0]);
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => { setBusy(true); try { await onSubmit({ title, category, file }); } finally { setBusy(false); } };
+  return (
+    <div>
+      <Field label="ชื่อเอกสาร *"><input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></Field>
+      <Field label="หมวดหมู่">
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>{DOC_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+      </Field>
+      <Field label="ไฟล์ *"><input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2">
+        <Btn onClick={submit} disabled={!title.trim() || !file || busy}>{busy ? "กำลังอัปโหลด..." : "อัปโหลด"}</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   BUDGET — role-filtered on the SERVER (not just hidden in UI).
+   L1/L2 only ever receive their own project(s); L3 manages
+   everything; L4 sees everything read-only. See _budgetData in
+   Code.gs — this is the one module that is NOT in the public
+   doGet payload.
+   ============================================================ */
+function BudgetView({ user, staffList, logAction }) {
+  const [data, setData] = useState(null);
+  const [loadingB, setLoadingB] = useState(true);
+  const [err, setErr] = useState("");
+  const [showNewBudget, setShowNewBudget] = useState(false);
+  const [showIncome, setShowIncome] = useState(false);
+  const [expenseFor, setExpenseFor] = useState(null);
+  const manager = canManage(user.role);
+  const readOnly = user.role === "L4";
+
+  const reload = useCallback(() => {
+    setLoadingB(true);
+    loadBudgetData(user.id).then((d) => { setData(d); setErr(""); }).catch((e) => setErr(e.message)).finally(() => setLoadingB(false));
+  }, [user.id]);
+  useEffect(() => { reload(); }, [reload]);
+
+  if (loadingB) return <div className="p-8 text-center text-sm" style={{ color: C.mute }}>กำลังโหลดข้อมูลงบประมาณ...</div>;
+  if (!API_URL) return <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>โมดูลงบประมาณต้องเชื่อมต่อ Google Sheets backend ก่อนใช้งาน</div>;
+  if (err) return <div className="p-6 text-sm" style={{ color: C.crimson, background: C.badBg, border: `1px solid #E9B9C1` }}>{err}</div>;
+
+  const spentFor = (budgetId) => data.expenses.filter((e) => e.budgetId === budgetId && e.approvalStatus !== "ปฏิเสธ").reduce((s, e) => s + e.amount, 0);
+  const totalIncome = data.income.reduce((s, i) => s + i.amount, 0);
+  const totalBudget = data.budgets.reduce((s, b) => s + b.amount, 0);
+  const totalSpent = data.budgets.reduce((s, b) => s + spentFor(b.id), 0);
+
+  const submitBudget = async (form) => {
+    const r = await postToSheetsAwait("addBudget", { teacherId: user.id, ...form });
+    if (r.error) { alert(r.error); return; }
+    logAction(`สร้างโครงการงบประมาณ: ${form.name}`);
+    setShowNewBudget(false); reload();
+  };
+  const submitIncome = async (form) => {
+    const r = await postToSheetsAwait("addIncome", { teacherId: user.id, ...form });
+    if (r.error) { alert(r.error); return; }
+    logAction(`บันทึกรายรับ: ${form.type} ${form.amount} บาท`);
+    setShowIncome(false); reload();
+  };
+  const submitExpense = async (form) => {
+    const r = await postToSheetsAwait("addExpense", { teacherId: user.id, budgetId: expenseFor.id, ...form });
+    if (r.error) { alert(r.error); return; }
+    logAction(`เบิกจ่าย: ${form.item} ${form.amount} บาท (${expenseFor.name})`);
+    setExpenseFor(null); reload();
+  };
+  const approveExpense = async (e, status) => {
+    const r = await postToSheetsAwait("updateExpenseStatus", { teacherId: user.id, id: e.id, status });
+    if (r.error) { alert(r.error); return; }
+    logAction(`${status} รายจ่าย: ${e.item}`);
+    reload();
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="BUDGET" title={data.isManager ? "ภาพรวมงบประมาณศูนย์กีฬา" : "งบประมาณของฉัน"}
+        sub={data.isManager ? "เห็นทุกโครงการ — เฉพาะ L3/L4 เท่านั้นที่เข้าถึงมุมมองนี้ได้ ข้อมูลกรองจากฝั่งเซิร์ฟเวอร์" : `เห็นเฉพาะโครงการที่คุณรับผิดชอบ (${data.budgets.length} โครงการ)`}
+        right={manager && (
+          <div className="flex gap-2">
+            <Btn variant="ghost" onClick={() => setShowIncome(true)} icon={Plus}>บันทึกรายรับ</Btn>
+            <Btn onClick={() => setShowNewBudget(true)} icon={Plus}>สร้างโครงการงบประมาณ</Btn>
+          </div>
+        )} />
+
+      {data.isManager && (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <StatCard label="รายรับรวม" value={`${totalIncome.toLocaleString()} ฿`} tone="ok" icon={DollarSign} />
+          <StatCard label="งบที่จัดสรรรวม" value={`${totalBudget.toLocaleString()} ฿`} tone="navy" icon={ClipboardList} />
+          <StatCard label="เบิกจ่ายไปแล้ว" value={`${totalSpent.toLocaleString()} ฿`} tone="crimson" icon={TrendingUp} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {data.budgets.length === 0 && <div className="col-span-2 p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>{data.isManager ? "ยังไม่มีโครงการงบประมาณในระบบ" : "คุณยังไม่ได้รับมอบหมายงบประมาณ/โครงการใด"}</div>}
+        {data.budgets.map((b) => {
+          const spent = spentFor(b.id);
+          const remain = b.amount - spent;
+          const pct = b.amount ? Math.min(100, Math.round((spent / b.amount) * 100)) : 0;
+          const myExpenses = data.expenses.filter((e) => e.budgetId === b.id);
+          return (
+            <div key={b.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-sm font-bold" style={{ color: C.ink }}>{b.name}</div>
+                <Pill fg={remain >= 0 ? C.ok : C.bad} bg={remain >= 0 ? C.okBg : C.badBg}>{b.status}</Pill>
+              </div>
+              <div className="text-xs mb-2" style={{ color: C.mute }}>{b.dept} · ผู้รับผิดชอบ: {b.owner} · {b.startDate}–{b.endDate}</div>
+              <div className="h-2 w-full mb-1" style={{ background: C.line }}>
+                <div className="h-2" style={{ width: `${pct}%`, background: pct >= 90 ? C.crimson : C.navy }} />
+              </div>
+              <div className="flex items-center justify-between text-xs mb-3" style={{ color: C.slate }}>
+                <span>ใช้ไป {spent.toLocaleString()} / {b.amount.toLocaleString()} ฿</span>
+                <span style={{ color: remain >= 0 ? C.ok : C.crimson, fontWeight: 600 }}>คงเหลือ {remain.toLocaleString()} ฿</span>
+              </div>
+              {myExpenses.length > 0 && (
+                <div className="space-y-1 mb-3 max-h-28 overflow-y-auto">
+                  {myExpenses.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between text-xs px-2 py-1" style={{ background: C.paper }}>
+                      <span className="truncate">{e.date} · {e.item}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono">{e.amount.toLocaleString()}฿</span>
+                        {e.approvalStatus === "รออนุมัติ" && manager ? (
+                          <div className="flex gap-1">
+                            <button onClick={() => approveExpense(e, "อนุมัติ")}><CheckCircle2 size={13} style={{ color: C.ok }} /></button>
+                            <button onClick={() => approveExpense(e, "ปฏิเสธ")}><X size={13} style={{ color: C.crimson }} /></button>
+                          </div>
+                        ) : (
+                          <Pill fg={e.approvalStatus === "อนุมัติ" ? C.ok : e.approvalStatus === "ปฏิเสธ" ? C.crimson : C.warn} bg={C.paper}>{e.approvalStatus}</Pill>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!readOnly && (String(b.owner) === String(user.id) || manager) && (
+                <Btn small variant="ghost" onClick={() => setExpenseFor(b)} icon={Plus}>บันทึกการเบิกจ่าย</Btn>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {data.isManager && data.income.length > 0 && (
+        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>รายรับ</h3>
+          <table className="w-full text-sm">
+            <thead><tr style={{ color: C.slate }}>{["วันที่", "ประเภท", "จำนวนเงิน", "ผู้รับเงิน", "หมายเหตุ"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {data.income.map((i) => (
+                <tr key={i.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-2 py-2 text-xs">{i.date}</td><td className="px-2 py-2 text-sm">{i.type}</td>
+                  <td className="px-2 py-2 text-xs font-mono" style={{ color: C.ok }}>{i.amount.toLocaleString()} ฿</td>
+                  <td className="px-2 py-2 text-xs">{i.receivedBy}</td><td className="px-2 py-2 text-xs" style={{ color: C.mute }}>{i.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showNewBudget && <Modal title="สร้างโครงการงบประมาณ" onClose={() => setShowNewBudget(false)} wide><BudgetForm staffList={staffList} onSubmit={submitBudget} /></Modal>}
+      {showIncome && <Modal title="บันทึกรายรับ" onClose={() => setShowIncome(false)}><IncomeForm onSubmit={submitIncome} /></Modal>}
+      {expenseFor && <Modal title={`บันทึกการเบิกจ่าย — ${expenseFor.name}`} onClose={() => setExpenseFor(null)}><ExpenseForm onSubmit={submitExpense} /></Modal>}
+    </div>
+  );
+}
+
+function BudgetForm({ staffList, onSubmit }) {
+  const [form, setForm] = useState({ name: "", owner: "", dept: "ศูนย์กีฬา", amount: 0, startDate: "2026-09-17", endDate: "", approvedBy: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.name.trim() && form.owner;
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <div className="col-span-2"><Field label="ชื่อโครงการ *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field></div>
+      <Field label="มอบหมายให้ (ผู้รับผิดชอบ) *">
+        <select value={form.owner} onChange={set("owner")} style={inputStyle}>
+          <option value="">— เลือกบุคลากร —</option>
+          {staffList.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
+        </select>
+      </Field>
+      <Field label="หน่วยงาน"><input value={form.dept} onChange={set("dept")} style={inputStyle} /></Field>
+      <Field label="งบที่ได้รับ (บาท)"><input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="วันที่เริ่ม"><input type="date" value={form.startDate} onChange={set("startDate")} style={inputStyle} /></Field>
+        <Field label="วันที่สิ้นสุด"><input type="date" value={form.endDate} onChange={set("endDate")} style={inputStyle} /></Field>
+      </div>
+      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>สร้างโครงการ</Btn></div>
+    </div>
+  );
+}
+
+function IncomeForm({ onSubmit }) {
+  const [form, setForm] = useState({ date: "2026-09-17", type: "ค่าเช่าสนาม", amount: 0, receivedBy: "", receiptRef: "", note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  return (
+    <div>
+      <Field label="วันที่"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+      <Field label="ประเภท">
+        <select value={form.type} onChange={set("type")} style={inputStyle}>
+          <option>ค่าเช่าสนาม</option><option>ค่าสมาชิก</option><option>อื่นๆ</option>
+        </select>
+      </Field>
+      <Field label="จำนวนเงิน (บาท)"><input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <Field label="ผู้รับเงิน"><input value={form.receivedBy} onChange={set("receivedBy")} style={inputStyle} /></Field>
+      <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!form.amount}>บันทึก</Btn></div>
+    </div>
+  );
+}
+
+function ExpenseForm({ onSubmit }) {
+  const [form, setForm] = useState({ date: "2026-09-17", item: "", amount: 0, note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.item.trim() && form.amount > 0;
+  return (
+    <div>
+      <Field label="วันที่"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+      <Field label="รายการ *"><input value={form.item} onChange={set("item")} style={inputStyle} /></Field>
+      <Field label="จำนวนเงิน (บาท) *"><input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>ส่งคำขอเบิกจ่าย</Btn></div>
     </div>
   );
 }

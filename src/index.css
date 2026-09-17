@@ -2,9 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
+:root {
+  --app-max-width: 480px;
+}
+
+html {
   height: 100%;
+  /* dynamic viewport height: shrinks/grows with mobile browser URL bar instead of
+     leaving dead space or getting clipped underneath it */
+  height: 100dvh;
 }
 body {
   margin: 0;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: hidden;         /* never allow horizontal page scroll */
+  overscroll-behavior-y: none;
+  background: #0A0A0A;        /* the letterbox area outside the phone frame on wide screens */
+  -webkit-text-size-adjust: 100%;
+}
+#root {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+/* the phone-frame shell every page mounts inside — locks the whole app to a
+   mobile-app aspect/width and centers it even on a desktop browser */
+.app-shell {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 40px rgba(0,0,0,0.5);
+}
+
+/* any element inside the app that scrolls its own content vertically should
+   never be allowed to introduce horizontal overflow */
+.app-shell * {
+  max-width: 100%;
+}
+.app-shell table {
+  max-width: none; /* tables opt back in — they scroll inside their own wrapper, see .table-scroll */
+}
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }

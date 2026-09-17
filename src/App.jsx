@@ -103,7 +103,7 @@ async function loadFromSheets() {
   }));
   const staff = (data.staff || []).map((r) => ({
     id: String(r["ID"]), name: r["ชื่อ"], dept: r["หน่วยงาน"], role: r["หน้าที่"],
-    phone: r["เบอร์โทร"] || "", level: (r["Level"] || "L1").trim(),
+    phone: r["เบอร์โทร"] || "", level: (r["Level"] || "L1").trim(), photoUrl: r["รูปโปรไฟล์"] || "",
   }));
   const schedule = (data.schedule || []).map((r) => ({
     id: `SC-${r._row}`, _row: r._row, day: r["วัน"], start: fmtTime(r["เวลาเริ่ม"]), end: fmtTime(r["เวลาจบ"]),
@@ -245,6 +245,17 @@ async function uploadItemImage(code, file) {
   const res = await fetch(API_URL, {
     method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({ action: "uploadImage", payload: { code, filename: `${code}.jpg`, mimeType: "image/jpeg", base64 } }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "อัปโหลดไม่สำเร็จ");
+  return data.result.url;
+}
+async function uploadProfilePhoto(teacherId, file) {
+  if (!API_URL) throw new Error("ยังไม่ได้เชื่อมต่อ Google Sheets backend — อัปโหลดรูปไม่ได้ในโหมดตัวอย่างนี้");
+  const base64 = await compressImage(file, 500, 0.85);
+  const res = await fetch(API_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "uploadProfilePhoto", payload: { teacherId, filename: `${teacherId}.jpg`, mimeType: "image/jpeg", base64 } }),
   });
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || "อัปโหลดไม่สำเร็จ");
@@ -458,11 +469,11 @@ const ROLE_META = {
 };
 
 const NAV = {
-  L0: [["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
-  L1: [["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
-  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
-  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L0: [["profile", "โปรไฟล์", User], ["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
+  L1: [["profile", "โปรไฟล์", User], ["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L2: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L3: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 const canEdit = (role) => role === "L2" || role === "L3";
@@ -536,8 +547,8 @@ function StatCard({ label, value, sub, tone = "navy", icon: Icon }) {
 
 function Modal({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,26,62,0.55)" }}>
-      <div className="w-full flex flex-col" style={{ maxWidth: wide ? 640 : 460, maxHeight: "88vh", background: C.white, border: `1px solid ${C.line}` }}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,26,62,0.55)" }}>
+      <div className="w-full flex flex-col" style={{ maxWidth: wide ? 440 : 360, maxHeight: "85dvh", background: C.white, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${C.line}` }}>
           <h3 className="font-bold text-base" style={{ color: C.navy }}>{title}</h3>
           <button onClick={onClose}><X size={18} style={{ color: C.slate }} /></button>
@@ -622,12 +633,12 @@ export default function App() {
 
   const handleLogin = (id) => {
     const demo = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
-    if (demo) { setUser(demo); setTab(demo.role === "L0" ? "borrow" : "dashboard"); setLoginErr(""); return; }
+    if (demo) { setUser(demo); setTab("profile"); setLoginErr(""); return; }
     const s = staffList.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
     if (s) {
       const role = ["L0", "L1", "L2", "L3", "L4"].includes(s.level) ? s.level : "L1";
-      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role });
-      setTab(role === "L0" ? "borrow" : "dashboard"); setLoginErr("");
+      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role, photoUrl: s.photoUrl || "" });
+      setTab("profile"); setLoginErr("");
       return;
     }
     setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ — ลองเลือกบัญชีตัวอย่างด้านล่าง");
@@ -685,34 +696,33 @@ export default function App() {
   const nav = NAV[user.role];
 
   return (
-    <div className="w-full min-h-screen flex" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
-      <Sidebar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar user={user} />
-        {(!API_URL || sheetsError) && (
-          <div className="px-6 py-2 text-xs flex items-center gap-2" style={{ background: sheetsError ? C.badBg : C.goldSoft, color: sheetsError ? C.crimsonDeep : C.crimsonDeep }}>
-            <AlertTriangle size={13} />
-            {sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง (ดูวิธีเชื่อมต่อใน Code.gs ที่แนบมา)"}
-          </div>
-        )}
-        <main className="flex-1 p-6 overflow-y-auto">
-          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
-          {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
-          {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-          {tab === "facility" && <Facility items={items} />}
-          {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
-          {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
-          {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
-          {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
-          {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
-          {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
-          {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
-          {tab === "analytics" && <Analytics items={items} />}
-          {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
-          {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
-        </main>
-      </div>
+    <div className="app-shell" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
+      <TopBar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
+      {(!API_URL || sheetsError) && (
+        <div className="px-4 py-2 text-xs flex items-center gap-2 shrink-0" style={{ background: sheetsError ? C.badBg : C.goldSoft, color: C.crimsonDeep }}>
+          <AlertTriangle size={13} className="shrink-0" />
+          <span>{sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง"}</span>
+        </div>
+      )}
+      <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+        {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
+        {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
+        {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
+        {tab === "facility" && <Facility items={items} />}
+        {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
+        {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} setTab={setTab} logAction={logAction} />}
+        {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
+        {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
+        {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
+        {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
+        {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
+        {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
+        {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
+        {tab === "analytics" && <Analytics items={items} />}
+        {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
+        {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
+      </main>
+      <BottomNav nav={nav} tab={tab} setTab={setTab} />
     </div>
   );
 }
@@ -722,15 +732,15 @@ export default function App() {
    ============================================================ */
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   return (
-    <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
-      {/* LEFT — illustration panel, image fills edge-to-edge */}
-      <div className="hidden md:block w-[46%] relative overflow-hidden" style={{ borderRight: "3px solid #C9A15A" }}>
+    <div className="app-shell flex flex-col" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
+      {/* top illustration strip — always visible, sized for the mobile frame instead of a desktop side panel */}
+      <div className="relative shrink-0 overflow-hidden" style={{ height: "34vh", minHeight: 200, borderBottom: "3px solid #C9A15A" }}>
         <img src="https://i.postimg.cc/KzSFyxxH/ACT-SPORT-CENTER-(2).png" alt="ACT Sport Center mascots"
-          className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center" }} />
+          className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center 20%" }} />
       </div>
 
-      {/* RIGHT — brushed-metal glass login panel */}
-      <div className="flex-1 relative flex items-center justify-center overflow-hidden" style={{
+      {/* brushed-metal glass login panel */}
+      <div className="flex-1 relative overflow-y-auto overflow-x-hidden" style={{
         background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
       }}>
         {/* brushed-metal texture */}
@@ -832,63 +842,89 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 /* ============================================================
    SIDEBAR / TOPBAR
    ============================================================ */
-function Sidebar({ user, nav, tab, setTab, onLogout }) {
+function TopBar({ user, nav, tab, setTab, onLogout }) {
+  const meta = ROLE_META[user.role];
+  const [drawer, setDrawer] = useState(false);
   return (
-    <aside className="w-60 shrink-0 flex flex-col" style={{ background: C.navyDeep }}>
-      <div className="px-5 py-5 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-        <Trophy size={20} style={{ color: C.accent }} />
-        <div>
-          <div className="text-white font-bold text-sm leading-tight">ACT SPORT CENTER</div>
-          <div className="text-[11px]" style={{ color: "#93A0C4" }}>Resource Intelligence</div>
-        </div>
-      </div>
-      <nav className="flex-1 py-4">
-        {nav.map(([key, label, Icon]) => {
-          const active = tab === key;
-          return (
-            <button key={key} onClick={() => setTab(key)}
-              className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
-              style={{
-                color: active ? C.white : "#AEB8D6",
-                background: active ? "rgba(255,255,255,0.08)" : "transparent",
-                borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
-              }}>
-              <Icon size={16} />{label}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="px-5 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-        <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
-          <LogOut size={13} /> ออกจากระบบ
+    <>
+      <header className="flex items-center justify-between px-3 py-3 shrink-0" style={{ background: C.white, borderBottom: `1px solid ${C.line}`, paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}>
+        <button onClick={() => setDrawer(true)} className="w-9 h-9 flex items-center justify-center shrink-0" aria-label="เมนู">
+          <div className="flex flex-col gap-1">
+            <span className="block w-5 h-0.5" style={{ background: C.ink }} />
+            <span className="block w-5 h-0.5" style={{ background: C.ink }} />
+            <span className="block w-5 h-0.5" style={{ background: C.ink }} />
+          </div>
         </button>
-      </div>
-    </aside>
+        <div className="min-w-0 flex-1 text-center px-2">
+          <div className="text-[11px] font-semibold tracking-wide truncate" style={{ color: meta.tint }}>{meta.dash}</div>
+        </div>
+        <button onClick={() => setTab("profile")} className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden" style={{ background: meta.tint }} aria-label="โปรไฟล์">
+          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={15} color={C.white} />}
+        </button>
+      </header>
+      {user.role === "L4" && (
+        <div className="px-3 py-1.5 shrink-0" style={{ background: C.goldSoft }}>
+          <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> โหมดดูอย่างเดียว</Pill>
+        </div>
+      )}
+      {drawer && (
+        <div className="absolute inset-0 z-50 flex" onClick={() => setDrawer(false)}>
+          <div className="w-[78%] max-w-[320px] h-full flex flex-col" style={{ background: C.navyDeep }} onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-5 flex items-center gap-2 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", paddingTop: "calc(1.25rem + env(safe-area-inset-top))" }}>
+              <Trophy size={20} style={{ color: C.accent }} />
+              <div>
+                <div className="text-white font-bold text-sm leading-tight">ACT SPORT CENTER</div>
+                <div className="text-[11px]" style={{ color: "#93A0C4" }}>Resource Intelligence</div>
+              </div>
+            </div>
+            <nav className="flex-1 py-3 overflow-y-auto">
+              {nav.map(([key, label, Icon]) => {
+                const active = tab === key;
+                return (
+                  <button key={key} onClick={() => { setTab(key); setDrawer(false); }}
+                    className="w-full flex items-center gap-3 px-5 py-3 text-sm text-left transition-colors"
+                    style={{
+                      color: active ? C.white : "#AEB8D6",
+                      background: active ? "rgba(255,255,255,0.08)" : "transparent",
+                      borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
+                    }}>
+                    <Icon size={16} />{label}
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="px-5 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+              <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
+                <LogOut size={13} /> ออกจากระบบ
+              </button>
+            </div>
+          </div>
+          <div className="flex-1" style={{ background: "rgba(0,0,0,0.5)" }} />
+        </div>
+      )}
+    </>
   );
 }
 
-function TopBar({ user }) {
-  const meta = ROLE_META[user.role];
+function BottomNav({ nav, tab, setTab }) {
+  const items = nav.slice(0, 5); // primary items only — everything else lives in the drawer
   return (
-    <header className="flex items-center justify-between px-6 py-4" style={{ background: C.white, borderBottom: `1px solid ${C.line}` }}>
-      <div>
-        <div className="text-xs font-semibold tracking-wide" style={{ color: meta.tint }}>{meta.dash}</div>
-      </div>
-      <div className="flex items-center gap-4">
-        {user.role === "L4" && (
-          <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> โหมดดูอย่างเดียว</Pill>
-        )}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 flex items-center justify-center" style={{ background: meta.tint, color: C.white }}>
-            <User size={15} />
-          </div>
-          <div className="text-right">
-            <div className="text-sm font-medium leading-tight" style={{ color: C.ink }}>{user.name}</div>
-            <div className="text-xs" style={{ color: C.mute }}>{user.title}</div>
-          </div>
-        </div>
-      </div>
-    </header>
+    <nav className="shrink-0 flex items-stretch" style={{
+      background: C.white, borderTop: `1px solid ${C.line}`,
+      paddingBottom: "env(safe-area-inset-bottom)",
+    }}>
+      {items.map(([key, label, Icon]) => {
+        const active = tab === key;
+        return (
+          <button key={key} onClick={() => setTab(key)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2"
+            style={{ color: active ? C.crimson : C.mute }}>
+            <Icon size={18} strokeWidth={active ? 2.4 : 2} />
+            <span className="text-[10px] leading-tight truncate max-w-[64px]" style={{ fontWeight: active ? 600 : 400 }}>{label}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -944,7 +980,7 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
     return (
       <div>
         <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="นี่คือสิ่งที่คุณต้องทำวันนี้" />
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <StatCard label="เกินกำหนด" value={taskCounts.overdue} icon={AlertTriangle} tone="crimson" />
           <StatCard label="ครบกำหนดวันนี้" value={taskCounts.today} icon={Clock} tone="gold" />
           <StatCard label="กำลังจะถึง" value={taskCounts.upcoming} icon={CalendarDays} tone="navy" />
@@ -960,12 +996,12 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <StatCard label="กำลังยืมอยู่" value={mine.filter((b) => b.status === "borrowed").length} icon={ArrowLeftRight} tone="navy" />
           <StatCard label="เกินกำหนดคืน" value={mine.filter((b) => b.status === "borrowed" && new Date(b.due) < new Date("2026-09-15")).length} icon={AlertTriangle} tone="crimson" />
           <StatCard label="คืนแล้วทั้งหมด" value={mine.filter((b) => b.status === "returned").length} icon={CheckCircle2} tone="ok" />
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <QuickAction icon={ClipboardList} title="งานของฉันทั้งหมด" desc="ดูรายการงานที่ได้รับมอบหมายทั้งหมด" onClick={() => setTab("tasks")} />
           <QuickAction icon={ArrowLeftRight} title="ยืมอุปกรณ์" desc="ค้นหาอุปกรณ์ที่พร้อมใช้และส่งคำขอยืม" onClick={() => setTab("borrow")} />
           <QuickAction icon={Wrench} title="แจ้งของชำรุด" desc="รายงานอุปกรณ์ที่พบว่าชำรุดหรือใช้งานไม่ได้" onClick={() => setTab("damage")} />
@@ -977,7 +1013,7 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
   return (
     <div>
       <SectionHead eyebrow={ROLE_META[user.role].dash} title="ภาพรวมทรัพยากรศูนย์กีฬา" sub="อัปเดตแบบเรียลไทม์จากทะเบียนครุภัณฑ์และรายการยืม–คืน" />
-      <div className="grid grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <StatCard label="รายการทั้งหมด" value={k.total} tone="navy" icon={Package} />
         <StatCard label="ใช้งานได้ (ชิ้น)" value={k.normal.toLocaleString()} tone="ok" icon={CheckCircle2} />
         <StatCard label="ชำรุด (ชิ้น)" value={k.damaged.toLocaleString()} tone="crimson" icon={Wrench} />
@@ -999,7 +1035,7 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="col-span-2 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold" style={{ color: C.navy }}>สุขภาพทรัพยากรแยกตามหมวด (Top 8 ชำรุดสูงสุด)</h3>
@@ -1143,7 +1179,7 @@ function Inventory({ user, items, setItems, logAction }) {
         </select>
       </div>
 
-      <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+      <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: C.navy, color: C.white }}>
@@ -1283,8 +1319,8 @@ function ItemImagePopup({ item, onClose, editable, onUploaded }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,10,10,0.65)" }} onClick={onClose}>
-      <div className="w-full flex flex-col" style={{ maxWidth: 380, background: C.white, border: `1px solid ${C.line}` }} onClick={(e) => e.stopPropagation()}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,10,10,0.65)" }} onClick={onClose}>
+      <div className="w-full flex flex-col" style={{ maxWidth: 340, background: C.white, border: `1px solid ${C.line}` }} onClick={(e) => e.stopPropagation()}>
         <div className="relative flex items-center justify-center overflow-hidden" style={{ height: 200, background: item.imageUrl ? "#000" : `linear-gradient(150deg, ${C.navyDeep}, ${C.navy})` }}>
           <button onClick={onClose} className="absolute top-2 right-2 z-10"><X size={18} color={C.white} /></button>
           {item.imageUrl ? (
@@ -1362,7 +1398,7 @@ function Facility({ items }) {
   return (
     <div>
       <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สรุปทรัพยากรแยกตามสถานที่จัดเก็บ / พื้นที่ใช้งาน" />
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {byLoc.map((l) => (
           <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.navy}` }}>
             <div className="flex items-center gap-2 mb-2">
@@ -1439,7 +1475,7 @@ function StaffDirectory({ staff, setStaffList, user, logAction }) {
           {depts.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {filtered.map((s) => (
           <div key={s.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
             <div className="flex items-center justify-between mb-2">
@@ -1610,7 +1646,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
       {manager && workload.length > 0 && (
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {workload.map((w) => (
               <div key={w.teacher} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${C.line}` }}>
                 <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
@@ -1743,7 +1779,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
       <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="Request → Approved → Borrowed → Return"
         right={<Btn onClick={() => setShowNew(true)} icon={Plus}>บันทึกการยืมใหม่</Btn>} />
 
-      <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+      <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: C.navy, color: C.white }}>
@@ -1864,7 +1900,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
           ยังไม่มีรายการแจ้งชำรุดใหม่ในรอบนี้ — ใช้ปุ่ม "แจ้งของชำรุด" เพื่อเริ่มบันทึก
         </div>
       ) : (
-        <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+        <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
@@ -1961,7 +1997,7 @@ function Analytics({ items }) {
   return (
     <div>
       <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ทรัพยากร" sub="Resource Health · Damage Rate · High-risk Resources" />
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>สุขภาพทรัพยากรรวม</h3>
           <ResponsiveContainer width="100%" height={200}>
@@ -2040,7 +2076,7 @@ function Reports({ items, borrows, damages }) {
   return (
     <div>
       <SectionHead eyebrow="REPORTS" title="รายงาน" sub="เลือกประเภทรายงานและส่งออกเป็นไฟล์ CSV" />
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="col-span-1 space-y-1">
           {REPORT_TYPES.map((t) => (
             <button key={t} onClick={() => setType(t)} className="w-full text-left px-3 py-2 text-sm"
@@ -2052,7 +2088,7 @@ function Reports({ items, borrows, damages }) {
         <div className="col-span-3 p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="font-bold text-base mb-1" style={{ color: C.navy }}>{type}</h3>
           <p className="text-sm mb-4" style={{ color: C.slate }}>ข้อมูลคำนวณจากทะเบียนครุภัณฑ์และรายการยืม–คืนล่าสุดแบบเรียลไทม์</p>
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <StatCard label="รายการในรายงาน" value={items.length} tone="navy" />
             <StatCard label="รอบข้อมูล" value="ปีการศึกษา 2568" tone="gold" />
             <StatCard label="อัปเดตล่าสุด" value="15 ก.ย. 2569" tone="ok" />
@@ -2098,6 +2134,7 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
 
       <div className="p-4 mb-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
         <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>รายการที่ระบบแนะนำให้ดำเนินการ</h3>
+        <div className="table-scroll">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ color: C.slate }}>
@@ -2122,6 +2159,7 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
@@ -2239,6 +2277,7 @@ function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, p
       {!personal && workload.length > 0 && (
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><Users size={15} /> ภาระงานทีม (Team Workload)</h3>
+          <div className="table-scroll">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ color: C.slate }}>
@@ -2262,6 +2301,7 @@ function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, p
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -2590,7 +2630,7 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
         {pmSchedule.length === 0 ? (
           <div className="p-4 text-center text-sm mb-4" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีนัดซ่อมล่วงหน้า</div>
         ) : (
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 gap-3 mb-6">
             {pmSchedule.map((p) => (
               <div key={p.id} className="p-3" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid #C2660D` }}>
                 <div className="text-sm font-semibold" style={{ color: C.ink }}>{p.refName}</div>
@@ -2606,7 +2646,7 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
       {repairs.length === 0 ? (
         <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีประวัติการซ่อมในระบบ</div>
       ) : (
-        <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+        <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
@@ -2743,7 +2783,7 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
       {filtered.length === 0 ? (
         <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีเอกสารในระบบ</div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {filtered.map((d) => (
             <div key={d.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
               <div className="flex items-start gap-3 mb-2">
@@ -2869,7 +2909,7 @@ function BudgetView({ user, staffList, logAction }) {
         )} />
 
       {data.isManager && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <StatCard label="รายรับรวม" value={`${totalIncome.toLocaleString()} ฿`} tone="ok" icon={DollarSign} />
           <StatCard label="งบที่จัดสรรรวม" value={`${totalBudget.toLocaleString()} ฿`} tone="navy" icon={ClipboardList} />
           <StatCard label="เบิกจ่ายไปแล้ว" value={`${totalSpent.toLocaleString()} ฿`} tone="crimson" icon={TrendingUp} />
@@ -3003,6 +3043,103 @@ function ExpenseForm({ onSubmit }) {
       <Field label="รายการ *"><input value={form.item} onChange={set("item")} style={inputStyle} /></Field>
       <Field label="จำนวนเงิน (บาท) *"><input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))} style={inputStyle} /></Field>
       <div className="flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>ส่งคำขอเบิกจ่าย</Btn></div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PROFILE — landing page after login. Change own photo, see own
+   info, and quick-jump into the modules relevant to this user.
+   ============================================================ */
+function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, setTab, logAction }) {
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const meta = ROLE_META[user.role];
+
+  const myTasks = tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name);
+  const myOverdue = myTasks.filter((t) => taskBucket(t) === "overdue").length;
+  const myToday = myTasks.filter((t) => taskBucket(t) === "today").length;
+  const myPeriods = schedule.filter((s) => s.teacher === user.name).length;
+
+  const pick = () => fileRef.current?.click();
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(""); setUploading(true);
+    try {
+      const url = await uploadProfilePhoto(user.id, file);
+      setUser((u) => ({ ...u, photoUrl: url }));
+      setStaffList((prev) => prev.map((s) => (s.id === user.id ? { ...s, photoUrl: url } : s)));
+      logAction("เปลี่ยนรูปโปรไฟล์");
+    } catch (ex) {
+      setErr(ex.message || "อัปโหลดไม่สำเร็จ");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const links = [
+    user.role !== "L0" && { key: "dashboard", label: "หน้าหลัก", icon: LayoutDashboard, desc: "ภาพรวมของคุณวันนี้" },
+    user.role !== "L0" && { key: "tasks", label: "งานของฉัน", icon: ClipboardList, desc: `${myTasks.length} งานทั้งหมด${myOverdue ? ` · ${myOverdue} เกินกำหนด` : ""}` },
+    user.role !== "L0" && { key: "calendar", label: "ปฏิทิน", icon: CalendarClock, desc: "งาน ตารางสอน และกิจกรรมทั้งหมด" },
+    (user.role === "L1" || user.role === "L2") && { key: "schedule", label: "ตารางสอนของฉัน", icon: CalendarDays, desc: `${myPeriods} คาบ/สัปดาห์` },
+    { key: "borrow", label: "ยืม–คืนอุปกรณ์", icon: ArrowLeftRight, desc: "ยืมหรือคืนอุปกรณ์" },
+    user.role !== "L0" && { key: "budget", label: user.role === "L3" || user.role === "L4" ? "งบประมาณ" : "งบของฉัน", icon: DollarSign, desc: "ดูโครงการและงบที่รับผิดชอบ" },
+  ].filter(Boolean);
+
+  return (
+    <div>
+      <SectionHead eyebrow="PROFILE" title="โปรไฟล์ของฉัน" sub="ข้อมูลส่วนตัวและทางลัดไปยังงานของคุณ" />
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="p-5 flex flex-col items-center text-center" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="relative mb-3">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden" style={{ background: meta.tint, border: `3px solid ${C.line}` }}>
+              {user.photoUrl ? (
+                <img src={user.photoUrl} alt={user.name} className="w-full h-full" style={{ objectFit: "cover" }} />
+              ) : (
+                <span className="text-2xl font-bold text-white">{user.name?.trim()?.[0] || "?"}</span>
+              )}
+            </div>
+            <button onClick={pick} disabled={uploading}
+              className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: C.crimson, color: C.white, border: `2px solid ${C.white}` }} title="เปลี่ยนรูปโปรไฟล์">
+              <Pencil size={13} />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+          </div>
+          {uploading && <div className="text-xs mb-2" style={{ color: C.mute }}>กำลังอัปโหลด...</div>}
+          {err && <div className="text-xs mb-2" style={{ color: C.crimson }}>{err}</div>}
+          <div className="text-base font-bold" style={{ color: C.ink }}>{user.name}</div>
+          <div className="text-xs mt-1" style={{ color: C.mute }}>{user.title || "-"}</div>
+          <div className="mt-3"><Pill fg={meta.tint} bg="#F2F3F7">{meta.label}</Pill></div>
+        </div>
+
+        <div className="col-span-2 p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-4" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div><div className="text-xs" style={{ color: C.mute }}>Teacher ID</div><div className="font-mono font-medium" style={{ color: C.ink }}>{user.id}</div></div>
+            <div><div className="text-xs" style={{ color: C.mute }}>หน่วยงาน</div><div className="font-medium" style={{ color: C.ink }}>{user.dept || "-"}</div></div>
+            <div><div className="text-xs" style={{ color: C.mute }}>ตำแหน่ง/หน้าที่</div><div className="font-medium" style={{ color: C.ink }}>{user.title || "-"}</div></div>
+            <div><div className="text-xs" style={{ color: C.mute }}>ระดับสิทธิ์</div><div className="font-medium" style={{ color: C.ink }}>{user.role} — {meta.label}</div></div>
+          </div>
+          {(myOverdue > 0 || myToday > 0) && (
+            <div className="mt-4 p-3 flex items-center gap-2" style={{ background: C.badBg }}>
+              <AlertTriangle size={14} style={{ color: C.crimson }} />
+              <span className="text-xs" style={{ color: C.crimsonDeep }}>
+                {myOverdue > 0 && `${myOverdue} งานเกินกำหนด `}{myToday > 0 && `· ${myToday} งานครบกำหนดวันนี้`}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ทางลัด</h3>
+      <div className="grid grid-cols-2 gap-4">
+        {links.map((l) => <QuickAction key={l.key} icon={l.icon} title={l.label} desc={l.desc} onClick={() => setTab(l.key)} />)}
+      </div>
     </div>
   );
 }

@@ -64,6 +64,14 @@ const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,s
    ============================================================ */
 const API_URL = "https://script.google.com/macros/s/AKfycbyk-K8T2uIgWtyPeiltRbjzyyuuWFoA3al-9y-cJNW9ASgm3lSeRoesIbrF2Bhr9JW7lQ/exec";
 
+// ตัดคำนำหน้าชื่อ (นาย/นาง/น.ส./นางสาว/มิส/ม./ครู/คุณครู) และช่องว่างออก เพื่อเทียบ
+// ชื่อครูข้ามแหล่งข้อมูลที่สะกดคำนำหน้าไม่ตรงกัน (ชีตบุคลากร vs ชีตตารางสอน)
+function normTeacherName(s) {
+  return String(s || "")
+    .replace(/(นางสาว|น\.ส\.|นาย|นาง|มิสเตอร์|มิส|คุณครู|ครู|ม\.)/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
 function catCodeFromName(name) {
   const hit = CATEGORIES.find((c) => c.name === name);
   return hit ? hit.code : name;
@@ -155,7 +163,7 @@ async function loadBudgetData(teacherId) {
     budgets: (data.budgets || []).map((b) => ({
       id: b["ID"], name: b["ชื่อโครงการ"], owner: b["ผู้รับผิดชอบ"], dept: b["หน่วยงาน"],
       amount: Number(b["งบที่ได้รับ"]) || 0, startDate: fmtDate(b["วันที่เริ่ม"]), endDate: fmtDate(b["วันที่สิ้นสุด"]),
-      status: b["สถานะ"] || "active", approvedBy: b["ผู้อนุมัติ"],
+      status: b["สถานะ"] || "active", approvedBy: b["ผู้อนุมัติ"], code: b["เลขที่งบประมาณ"] || "",
     })),
     income: (data.income || []).map((i) => ({
       id: i["ID"], date: fmtDate(i["วันที่"]), type: i["ประเภท"], amount: Number(i["จำนวนเงิน"]) || 0,
@@ -172,7 +180,9 @@ async function loadBudgetData(teacherId) {
 /* ============================================================
    WORK MANAGEMENT helpers
    ============================================================ */
-const TODAY_ISO = "2026-09-17";
+// วันนี้จริงตามเครื่อง/เบราว์เซอร์ของผู้ใช้ — ห้าม hardcode วันที่ตายตัว ไม่งั้นหน้าแรก/
+// ปฏิทิน/สถานะเกินกำหนด จะค้างอยู่ที่วันเดิมตลอดไปไม่ขยับตามวันจริง
+const TODAY_ISO = new Date().toISOString().slice(0, 10);
 const PRIORITY_META = {
   CRITICAL: { label: "วิกฤต", fg: "#FFFFFF", bg: "#B91C3C" },
   HIGH: { label: "สูง", fg: "#B91C3C", bg: "#FBEAEC" },
@@ -653,9 +663,28 @@ export default function App() {
   useEffect(() => { if (!loading && !API_URL) window.storage?.set("damages", JSON.stringify(damages), true).catch(() => {}); }, [damages, loading]);
   useEffect(() => { if (!loading) window.storage?.set("actions", JSON.stringify(actionsLog), true).catch(() => {}); }, [actionsLog, loading]);
 
-  const handleLogin = (id) => {
+  const handleLogin = async (id, password) => {
+    // demo/sample accounts always work by ID alone, regardless of password —
+    // they're for showing off each role's view, not real accounts
     const demo = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
     if (demo) { setUser(demo); setTab("profile"); setLoginErr(""); return; }
+
+    // real staff: verify username + password server-side against "9.บุคลากร"
+    if (API_URL) {
+      try {
+        const result = await postToSheetsAwait("login", { username: id.trim(), password: password || "" });
+        const u = result.user;
+        const role = ["L0", "L1", "L2", "L3", "L4"].includes(u.role) ? u.role : "L1";
+        setUser({ id: u.id, name: u.name, role, dept: u.dept, title: u.dept, photoUrl: u.photoUrl || "", phone: u.phone || "" });
+        setTab("profile"); setLoginErr("");
+        return;
+      } catch (e) {
+        setLoginErr(e.message || "Username หรือ Password ไม่ถูกต้อง");
+        return;
+      }
+    }
+
+    // offline/demo fallback (no backend connected yet) — ID-only, same as before
     const s = staffList.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
     if (s) {
       const role = ["L0", "L1", "L2", "L3", "L4"].includes(s.level) ? s.level : "L1";
@@ -728,7 +757,7 @@ export default function App() {
             <span>{sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง"}</span>
           </div>
         )}
-        <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+        <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom))" }}>
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
@@ -760,6 +789,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const MASCOT_URL = "https://i.postimg.cc/hvB9N1n8/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-3.png";
   const MOBILE_BG_URL = "https://i.postimg.cc/90xFhcT9/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(6).png";
   const [navOpen, setNavOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const submit = () => onLogin(loginId, password);
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
       {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width */}
@@ -837,8 +868,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                 <div className="relative">
                   <User size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
                   <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
-                    placeholder="Teacher ID เช่น T00125"
+                    onKeyDown={(e) => e.key === "Enter" && submit()}
+                    placeholder="Username เช่น T00125"
                     className="focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25 transition-all duration-200"
                     style={{
                       width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
@@ -851,20 +882,21 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                 <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Password</label>
                 <div className="relative">
                   <Lock size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
-                  <input type="password" placeholder="Password" disabled
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submit()}
+                    placeholder="Password"
                     style={{
                       width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
                       background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
-                      color: "rgba(255,255,255,0.5)", outline: "none",
+                      color: C.white, outline: "none",
                     }} />
                 </div>
-                <div className="text-[11px] mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>ระบบยืนยันตัวตนด้วยรหัสประจำตัวครูเท่านั้น — ยังไม่ต้องใช้รหัสผ่าน</div>
               </div>
 
               {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
 
               <div className="mt-2 md:mt-5 md:flex md:justify-end">
-                <button onClick={() => onLogin(loginId)}
+                <button onClick={submit}
                   className="w-full md:w-auto px-8 py-3 md:py-2.5 text-sm font-bold transition-all duration-200 active:scale-95 hover:brightness-110 hover:shadow-[0_0_28px_rgba(232,100,26,0.75)]"
                   style={{
                     minHeight: 48,
@@ -1032,7 +1064,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
 function BottomNav({ nav, tab, setTab }) {
   const items = nav.slice(0, 5); // primary items only — everything else lives in the drawer
   return (
-    <nav className="mobile-only shrink-0 flex items-stretch" style={{
+    <nav className="mobile-only bottom-nav-fixed shrink-0 flex items-stretch" style={{
       background: C.white, borderTop: `1px solid ${C.line}`,
       paddingBottom: "env(safe-area-inset-bottom)",
     }}>
@@ -1805,9 +1837,17 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   const [confirmDel, setConfirmDel] = useState(null);
   const [conflict, setConflict] = useState(null); // { form, with }
   const [budget, setBudget] = useState({ budgets: [], loaded: false });
+  const [editRow, setEditRow] = useState(null); // แถวที่กำลังแก้ไขรายครั้งในมุมมองกริด
+  // หัวหน้า (manager) ก็มีตารางสอนของตัวเองเหมือนกัน — ให้เลือกดูได้ว่าจะดูเฉพาะ
+  // ตารางของตัวเอง (ค่าเริ่มต้น) หรือสลับไปดูตารางรวมทุกคน/มอบหมายงาน
+  const [managerViewMine, setManagerViewMine] = useState(true);
 
-  const mine = !manager && (user.role === "L1" || user.role === "L2");
-  const rows = mine ? schedule.filter((s) => s.teacher === user.name) : schedule;
+  const hasOwnSchedule = user.role === "L1" || user.role === "L2" || manager;
+  const mine = hasOwnSchedule && (!manager || managerViewMine);
+  // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
+  // ดึงมาจากชีตตารางสอน (เช่น "ม.ชาญวิทย์ พึ่งอิ่ม") อาจสะกดคำนำหน้าไม่ตรงกับชื่อที่
+  // login เข้ามา (เช่น "นายชาญวิทย์ พึ่งอิ่ม" จากชีตบุคลากร)
+  const rows = mine ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name)) : schedule;
 
   // งานอื่นที่หัวหน้ามอบหมาย (ไม่ใช่คาบสอน) — จาก Work Management, กรองเฉพาะที่ assign ให้ฉัน
   const myOtherTasks = useMemo(
@@ -1855,22 +1895,53 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
     setConfirmDel(null);
   };
 
+  const submitEditSchedule = async (form) => {
+    try {
+      await postToSheetsAwait("updateSchedule", { row: editRow._row, ...form });
+      setSchedule((prev) => prev.map((x) => (x._row === editRow._row ? { ...x, ...form } : x)));
+      logAction(`แก้ไขตารางสอน — ${form.teacher || editRow.teacher} วัน${form.day} ${form.start}-${form.end}`);
+      setEditRow(null);
+    } catch (e) {
+      alert(e.message || "แก้ไขไม่สำเร็จ");
+    }
+  };
+
   return (
     <div>
       <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางสอน & ภาระงาน"}
         sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบทั้งหมด — มอบหมายงานหรือดูแลห้องเพิ่มเข้าตารางได้ที่นี่`}
-        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มคาบ/มอบหมายงาน</Btn>} />
+        right={
+          <div className="flex items-center gap-2">
+            {manager && (
+              <div className="flex items-center" style={{ border: `1px solid ${C.line}` }}>
+                <button onClick={() => setManagerViewMine(true)}
+                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  ตารางของฉัน
+                </button>
+                <button onClick={() => setManagerViewMine(false)}
+                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={!managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  ตารางรวมทุกคน
+                </button>
+              </div>
+            )}
+            {manager && !mine && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มคาบ/มอบหมายงาน</Btn>}
+          </div>
+        } />
 
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
           {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางสอนในระบบ — กด \"เพิ่มคาบ/มอบหมายงาน\" เพื่อเริ่มบันทึก"}
         </div>
+      ) : mine ? (
+        <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : (
         <div style={{ border: `1px solid ${C.line}`, background: C.white }} className="mb-6">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
-                {["วัน", "เวลา", "วิชา/กิจกรรม", ...(mine ? [] : ["ครูผู้สอน"]), "สถานที่", "กลุ่ม/ระดับชั้น", ""].map((h) => (
+                {["วัน", "เวลา", "วิชา/กิจกรรม", "ครูผู้สอน", "สถานที่", "กลุ่ม/ระดับชั้น", ""].map((h) => (
                   <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>
                 ))}
               </tr>
@@ -1881,10 +1952,10 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
                   <td className="px-3 py-2 text-xs">{s.day}</td>
                   <td className="px-3 py-2 text-xs font-mono">{s.start}–{s.end}</td>
                   <td className="px-3 py-2 text-sm font-medium" style={{ color: s.subject === "ดูแลห้อง" ? C.crimson : C.ink }}>{s.subject}</td>
-                  {!mine && <td className="px-3 py-2 text-xs">{s.teacher}</td>}
+                  <td className="px-3 py-2 text-xs">{s.teacher}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.loc}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.group}</td>
-                  <td className="px-3 py-2">{manager && <button onClick={() => setConfirmDel(s)}><X size={14} style={{ color: C.crimson }} /></button>}</td>
+                  <td className="px-3 py-2">{manager && s._row && <button onClick={() => setConfirmDel(s)}><X size={14} style={{ color: C.crimson }} /></button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -1933,7 +2004,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
         </div>
       )}
 
-      {manager && workload.length > 0 && (
+      {manager && !mine && workload.length > 0 && (
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -1975,13 +2046,18 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
           </div>
         </Modal>
       )}
+      {editRow && (
+        <Modal title="แก้ไขคาบสอนครั้งนี้" onClose={() => setEditRow(null)} wide>
+          <ScheduleForm staffList={staffList} initial={editRow} submitLabel="บันทึกการแก้ไข" onSubmit={submitEditSchedule} />
+        </Modal>
+      )}
     </div>
   );
 }
 
-function ScheduleForm({ staffList, onSubmit }) {
-  const [form, setForm] = useState({ day: DAYS[0], start: "08:00", end: "09:00", subject: "", teacher: "", loc: "", group: "", equipment: "", qty: "", note: "" });
-  const [isDuty, setIsDuty] = useState(false);
+function ScheduleForm({ staffList, onSubmit, initial, submitLabel = "บันทึก" }) {
+  const [form, setForm] = useState({ day: DAYS[0], start: "08:00", end: "09:00", subject: "", teacher: "", loc: "", group: "", equipment: "", qty: "", note: "", ...(initial || {}) });
+  const [isDuty, setIsDuty] = useState(initial ? initial.subject === "ดูแลห้อง" : false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const valid = form.teacher.trim() && form.loc.trim() && form.subject.trim();
   return (
@@ -2027,9 +2103,87 @@ function ScheduleForm({ staffList, onSubmit }) {
           <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
         </div>
         <div className="col-span-2 flex justify-end mt-2">
-          <Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn>
+          <Btn onClick={() => onSubmit(form)} disabled={!valid}>{submitLabel}</Btn>
         </div>
       </div>
+    </div>
+  );
+}
+
+// สีการ์ดในตารางแบบกริด — ไล่สีตามชื่อวิชา/กิจกรรม ให้ดูเป็นระเบียบและแยกแยะง่าย
+const SCHEDULE_CARD_COLORS = [
+  { bg: "#F1D2D6", fg: "#7A1220", bar: C.crimson },
+  { bg: "#DCEEFB", fg: "#1B5E8A", bar: "#2E8FCB" },
+  { bg: "#E3F3E6", fg: "#1E7A4C", bar: "#37A868" },
+  { bg: "#FBF1DF", fg: "#8A5A0C", bar: "#B8791A" },
+  { bg: "#EDE3FB", fg: "#5B3B9E", bar: "#7C4FD1" },
+  { bg: "#FDE6EF", fg: "#9E3B6E", bar: "#D15C97" },
+];
+function scheduleCardColor(subject) {
+  let h = 0;
+  const s = String(subject || "");
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % SCHEDULE_CARD_COLORS.length;
+  return SCHEDULE_CARD_COLORS[h < 0 ? 0 : h];
+}
+
+// ตารางสอนแบบกริด (วัน x คาบ) สำหรับมุมมอง "ตารางสอนของฉัน" — คลิกที่คาบซึ่งเพิ่มเอง
+// ในระบบ (มี _row) เพื่อแก้ไข/ลบรายครั้งได้ทันที ส่วนคาบที่ดึงมาจากชีตตารางสอนกลาง
+// อัตโนมัติ (ไม่มี _row) จะดูได้อย่างเดียว เพราะแก้ที่นี่แล้วจะไม่สะท้อนกลับไปต้นทาง
+// คาบเรียนเต็มวัน 08:10–16:00 (คาบ 1–9 ไม่รวม After School) ให้ตรงกับ PERIOD_TIMES_ ฝั่ง Code.gs
+// ใช้เป็นแกนเวลาคงที่ของตาราง เพื่อให้เห็นทุกคาบทุกวันแม้ช่องนั้นจะว่าง ไม่ใช่แสดงเฉพาะ
+// คาบ/วันที่มีข้อมูลเท่านั้น
+const FULL_DAY_SLOTS = [
+  ["08:10", "09:00"], ["09:00", "09:50"], ["10:00", "10:50"], ["10:50", "11:40"],
+  ["11:40", "12:30"], ["12:30", "13:20"], ["13:20", "14:10"], ["14:10", "15:00"],
+  ["15:10", "16:00"],
+].map(([start, end]) => ({ start, end }));
+
+function ScheduleGrid({ rows, onEdit, onDelete }) {
+  const dayList = DAYS.slice(0, 6); // จันทร์–เสาร์ เสมอ ไม่ว่าวันนั้นจะมีคาบหรือไม่
+  const slots = FULL_DAY_SLOTS; // 08:10–16:00 เสมอ ไม่ว่าคาบนั้นจะมีข้อมูลหรือไม่
+
+  return (
+    <div className="mb-6 overflow-x-auto" style={{ border: `1px solid ${C.line}`, background: C.white }}>
+      <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 720 }}>
+        <thead>
+          <tr>
+            <th className="text-left px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 100 }}>เวลา</th>
+            {dayList.map((d) => (
+              <th key={d} className="text-center px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 150 }}>{d}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {slots.map((slot) => (
+            <tr key={`${slot.start}-${slot.end}`} style={{ borderTop: `1px solid ${C.line}` }}>
+              <td className="px-3 py-2 text-xs align-top font-mono" style={{ background: C.paper, color: C.slate }}>{slot.start}–{slot.end}</td>
+              {dayList.map((d) => {
+                const s = rows.find((r) => r.day === d && r.start === slot.start && r.end === slot.end);
+                if (!s) return <td key={d} className="px-2 py-2 text-center text-xs align-middle" style={{ color: C.mute }}>–</td>;
+                const col = scheduleCardColor(s.subject);
+                const editable = !!s._row;
+                return (
+                  <td key={d} className="px-2 py-2 align-top">
+                    <div className="p-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
+                      <div className="text-xs font-bold" style={{ color: col.fg }}>{s.subject}</div>
+                      {s.loc && <div className="text-[11px] mt-0.5" style={{ color: col.fg }}>{s.loc}</div>}
+                      {s.group && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.85 }}>{s.group}</div>}
+                      {editable ? (
+                        <div className="flex gap-2 mt-1.5">
+                          <button onClick={() => onEdit(s)} className="text-[11px] underline" style={{ color: col.fg }}>แก้ไข</button>
+                          <button onClick={() => onDelete(s)} className="text-[11px] underline" style={{ color: C.crimson }}>ลบ</button>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] mt-1" style={{ color: col.fg, opacity: 0.7 }}>จากตารางสอนกลาง</div>
+                      )}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -2263,13 +2417,18 @@ function DamageForm({ items, onSubmit }) {
           {items.map((i) => <option key={i.id} value={i.id}>{i.code} — {i.name}</option>)}
         </select>
       </Field>
-      <Field label="สถานที่ (เติมอัตโนมัติจากตำแหน่งเก็บของอุปกรณ์ — แก้ไขได้ถ้าจุดที่ชำรุดไม่ตรง)">
-        <input
+      <Field label="สถานที่ (เติมอัตโนมัติจากตำแหน่งเก็บของอุปกรณ์ — เลือกใหม่ได้ถ้าจุดที่ชำรุดไม่ตรง)">
+        <select
           value={location}
           onChange={(e) => { setLocTouched(true); setLocation(e.target.value); }}
           style={inputStyle}
-          placeholder="เช่น สนามฟุตบอล"
-        />
+        >
+          <option value="">— เลือกสถานที่ —</option>
+          {location && !LOCATIONS.some((l) => l.name === location) && (
+            <option value={location}>{location} (จากข้อมูลเดิม)</option>
+          )}
+          {LOCATIONS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
+        </select>
       </Field>
       <Field label="จำนวนที่ชำรุด"><input type="number" min={1} value={qty} onChange={(e) => setQty(Number(e.target.value))} style={inputStyle} /></Field>
       <Field label="อาการ / รายละเอียด"><textarea rows={3} value={symptom} onChange={(e) => setSymptom(e.target.value)} style={inputStyle} /></Field>
@@ -2655,7 +2814,7 @@ function TaskForm({ staffList, items, onSubmit }) {
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="กำหนดเสร็จ (วันที่)"><input type="date" value={form.dueDate} onChange={set("dueDate")} style={inputStyle} /></Field>
+        <Field label="กำหนดเสร็จ"><input type="date" value={form.dueDate} onChange={set("dueDate")} style={inputStyle} /></Field>
         <Field label="เวลา"><input type="time" value={form.dueTime} onChange={set("dueTime")} style={inputStyle} /></Field>
       </div>
       <Field label="สถานที่"><input value={form.location} onChange={set("location")} style={inputStyle} placeholder="เช่น สนามฟุตบอล" /></Field>
@@ -2779,7 +2938,7 @@ function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly,
   });
 
   // schedule repeats weekly — project onto -1..+6 weeks from today for a usable calendar window
-  const base = new Date(2026, 8, 17); // 2026-09-17, Thursday — matches TODAY_ISO
+  const base = new Date(); // วันนี้จริง
   const monday = new Date(base); monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
   for (let w = -1; w <= 6; w++) {
     schedule.forEach((s) => {
@@ -2789,7 +2948,8 @@ function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly,
       const start = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.start);
       const end = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.end);
       if (!start) return;
-      events.push({ id: `S-${s.id}-${w}`, title: `🏟️ ${s.subject} — ${s.teacher}`, start, end: end || start, allDay: false, layer: "schedule", raw: s });
+      // ปฏิทินกลางใส่แค่ชื่อกีฬา/ห้อง พอ ไม่ต้องพ่วงชื่อครูหรือรายละเอียดอื่น (ยาวเกินไป)
+      events.push({ id: `S-${s.id}-${w}`, title: `🏟️ ${s.subject || s.loc || "-"}`, start, end: end || start, allDay: false, layer: "schedule", raw: s });
     });
   }
 
@@ -3166,6 +3326,8 @@ function BudgetView({ user, staffList, logAction }) {
   const [showNewBudget, setShowNewBudget] = useState(false);
   const [showIncome, setShowIncome] = useState(false);
   const [expenseFor, setExpenseFor] = useState(null);
+  const [confirmDelBudget, setConfirmDelBudget] = useState(null);
+  const [codeSearch, setCodeSearch] = useState("");
   const manager = canManage(user.role);
   const readOnly = user.role === "L4";
 
@@ -3208,6 +3370,12 @@ function BudgetView({ user, staffList, logAction }) {
     logAction(`${status} รายจ่าย: ${e.item}`);
     reload();
   };
+  const deleteBudget = async (b) => {
+    const r = await postToSheetsAwait("deleteBudget", { teacherId: user.id, id: b.id });
+    if (r.error) { alert(r.error); return; }
+    logAction(`ลบโครงการงบประมาณ: ${b.name}`);
+    setConfirmDelBudget(null); reload();
+  };
 
   return (
     <div>
@@ -3228,9 +3396,32 @@ function BudgetView({ user, staffList, logAction }) {
         </div>
       )}
 
+      {data.budgets.length > 0 && (
+        <div className="mb-4">
+          <Field label="ค้นหาด้วยเลขที่งบประมาณ">
+            <input
+              value={codeSearch}
+              onChange={(e) => setCodeSearch(e.target.value)}
+              placeholder="พิมพ์เลขที่งบประมาณ เช่น B2569-001"
+              style={{ ...inputStyle, maxWidth: 320 }}
+            />
+          </Field>
+          {codeSearch.trim() && (() => {
+            const hit = data.budgets.find((b) => b.code && b.code.toLowerCase().includes(codeSearch.trim().toLowerCase()));
+            return (
+              <div className="text-xs mt-1" style={{ color: hit ? C.ok : C.mute }}>
+                {hit ? `พบโครงการ: ${hit.name} (ผู้รับผิดชอบ: ${hit.owner})` : "ไม่พบโครงการที่มีเลขนี้"}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 mb-6">
         {data.budgets.length === 0 && <div className="col-span-2 p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>{data.isManager ? "ยังไม่มีโครงการงบประมาณในระบบ" : "คุณยังไม่ได้รับมอบหมายงบประมาณ/โครงการใด"}</div>}
-        {data.budgets.map((b) => {
+        {data.budgets
+          .filter((b) => !codeSearch.trim() || (b.code && b.code.toLowerCase().includes(codeSearch.trim().toLowerCase())))
+          .map((b) => {
           const spent = spentFor(b.id);
           const remain = b.amount - spent;
           const pct = b.amount ? Math.min(100, Math.round((spent / b.amount) * 100)) : 0;
@@ -3238,8 +3429,18 @@ function BudgetView({ user, staffList, logAction }) {
           return (
             <div key={b.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
               <div className="flex items-center justify-between mb-1">
-                <div className="text-sm font-bold" style={{ color: C.ink }}>{b.name}</div>
-                <Pill fg={remain >= 0 ? C.ok : C.bad} bg={remain >= 0 ? C.okBg : C.badBg}>{b.status}</Pill>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold" style={{ color: C.ink }}>{b.name}</div>
+                  {b.code && <div className="text-xs font-mono" style={{ color: C.mute }}>เลขที่ {b.code}</div>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Pill fg={remain >= 0 ? C.ok : C.bad} bg={remain >= 0 ? C.okBg : C.badBg}>{b.status}</Pill>
+                  {manager && (
+                    <button onClick={() => setConfirmDelBudget(b)} title="ลบโครงการ">
+                      <X size={14} style={{ color: C.crimson }} />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="text-xs mb-2" style={{ color: C.mute }}>{b.dept} · ผู้รับผิดชอบ: {b.owner} · {b.startDate}–{b.endDate}</div>
               <div className="h-2 w-full mb-1" style={{ background: C.line }}>
@@ -3298,17 +3499,29 @@ function BudgetView({ user, staffList, logAction }) {
       {showNewBudget && <Modal title="สร้างโครงการงบประมาณ" onClose={() => setShowNewBudget(false)} wide><BudgetForm staffList={staffList} onSubmit={submitBudget} /></Modal>}
       {showIncome && <Modal title="บันทึกรายรับ" onClose={() => setShowIncome(false)}><IncomeForm onSubmit={submitIncome} /></Modal>}
       {expenseFor && <Modal title={`บันทึกการเบิกจ่าย — ${expenseFor.name}`} onClose={() => setExpenseFor(null)}><ExpenseForm onSubmit={submitExpense} /></Modal>}
+      {confirmDelBudget && (
+        <Modal title="ยืนยันการลบโครงการ" onClose={() => setConfirmDelBudget(null)}>
+          <div className="text-sm mb-4" style={{ color: C.ink }}>
+            ต้องการลบโครงการ "<strong>{confirmDelBudget.name}</strong>" ใช่หรือไม่? รายการเบิกจ่ายทั้งหมดของโครงการนี้จะถูกลบไปด้วย และกู้คืนไม่ได้
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Btn variant="ghost" onClick={() => setConfirmDelBudget(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteBudget(confirmDelBudget)}>ลบโครงการ</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 function BudgetForm({ staffList, onSubmit }) {
-  const [form, setForm] = useState({ name: "", owner: "", dept: "ศูนย์กีฬา", amount: 0, startDate: "2026-09-17", endDate: "", approvedBy: "" });
+  const [form, setForm] = useState({ name: "", budgetCode: "", owner: "", dept: "ศูนย์กีฬา", amount: 0, startDate: "2026-09-17", endDate: "", approvedBy: "" });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const valid = form.name.trim() && form.owner;
   return (
     <div className="grid grid-cols-2 gap-x-4">
       <div className="col-span-2"><Field label="ชื่อโครงการ *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field></div>
+      <div className="col-span-2"><Field label="เลขที่งบประมาณ"><input value={form.budgetCode} onChange={set("budgetCode")} placeholder="เช่น B2569-001" style={inputStyle} /></Field></div>
       <Field label="มอบหมายให้ (ผู้รับผิดชอบ) *">
         <select value={form.owner} onChange={set("owner")} style={inputStyle}>
           <option value="">— เลือกบุคลากร —</option>
@@ -3378,8 +3591,8 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   const myCompleted = myTasks.filter((t) => t.status === "COMPLETED").length;
   const completionPct = myTasks.length ? Math.round((myCompleted / myTasks.length) * 100) : 0;
 
-  // week strip — Mon..Sun of the current week, anchored on TODAY (2026-09-17, Thu)
-  const todayDate = new Date(2026, 8, 17);
+  // week strip — Mon..Sun of the current week, anchored on วันนี้จริง
+  const todayDate = new Date();
   const monday = new Date(todayDate); monday.setDate(todayDate.getDate() - ((todayDate.getDay() + 6) % 7));
   const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
   const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

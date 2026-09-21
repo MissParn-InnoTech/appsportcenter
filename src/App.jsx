@@ -9,7 +9,7 @@ import {
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
   Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
   ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
-  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock,
+  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu,
 } from "lucide-react";
 import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -99,7 +99,7 @@ async function loadFromSheets() {
   const damages = data.damages.map((r) => ({
     id: `DM-${r._row}`, _row: r._row, date: fmtDate(r["วันที่แจ้ง"]), itemCode: r["รหัสอุปกรณ์"],
     itemName: r["ชื่ออุปกรณ์"], qty: Number(r["จำนวน"]) || 0, symptom: r["อาการ / สาเหตุ"] || "",
-    reporter: r["ผู้แจ้ง"], severity: "ปานกลาง", status: r["สถานะ"] || "รอตรวจสอบ",
+    location: r["สถานที่"] || "", reporter: r["ผู้แจ้ง"], severity: "ปานกลาง", status: r["สถานะ"] || "รอตรวจสอบ",
   }));
   const staff = (data.staff || []).map((r) => ({
     id: String(r["ID"]), name: r["ชื่อ"], dept: r["หน่วยงาน"], role: r["หน้าที่"],
@@ -476,6 +476,28 @@ const NAV = {
   L4: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
+// groups the drawer menu into labeled sections (like a categorized mobile-app menu).
+// items not listed here fall into "อื่นๆ"; empty groups (role doesn't have any of
+// those keys) are skipped automatically when rendering.
+const NAV_GROUPS = [
+  { label: "ภาพรวม", keys: ["profile", "dashboard", "tasks", "calendar"] },
+  { label: "ทรัพยากรและสถานที่", keys: ["inventory", "facility", "borrow", "damage", "maintenance"] },
+  { label: "บุคลากร", keys: ["staff", "schedule"] },
+  { label: "ข้อมูลอ้างอิง", keys: ["budget", "knowledge"] },
+  { label: "บริหารจัดการ", keys: ["analytics", "reports", "actions"] },
+];
+function groupedNav(nav) {
+  const byKey = Object.fromEntries(nav.map((item) => [item[0], item]));
+  const used = new Set();
+  const groups = NAV_GROUPS.map((g) => ({
+    label: g.label,
+    items: g.keys.filter((k) => byKey[k]).map((k) => { used.add(k); return byKey[k]; }),
+  })).filter((g) => g.items.length > 0);
+  const leftover = nav.filter((item) => !used.has(item[0]));
+  if (leftover.length) groups.push({ label: "อื่นๆ", items: leftover });
+  return groups;
+}
+
 const canEdit = (role) => role === "L2" || role === "L3";
 const canManage = (role) => role === "L3";
 const isReadOnly = (role) => role === "L4";
@@ -637,7 +659,7 @@ export default function App() {
     const s = staffList.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
     if (s) {
       const role = ["L0", "L1", "L2", "L3", "L4"].includes(s.level) ? s.level : "L1";
-      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role, photoUrl: s.photoUrl || "" });
+      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role, photoUrl: s.photoUrl || "", phone: s.phone || "" });
       setTab("profile"); setLoginErr("");
       return;
     }
@@ -696,33 +718,36 @@ export default function App() {
   const nav = NAV[user.role];
 
   return (
-    <div className="app-shell" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
-      <TopBar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
-      {(!API_URL || sheetsError) && (
-        <div className="px-4 py-2 text-xs flex items-center gap-2 shrink-0" style={{ background: sheetsError ? C.badBg : C.goldSoft, color: C.crimsonDeep }}>
-          <AlertTriangle size={13} className="shrink-0" />
-          <span>{sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง"}</span>
-        </div>
-      )}
-      <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
-        {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
-        {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
-        {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-        {tab === "facility" && <Facility items={items} />}
-        {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
-        {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} setTab={setTab} logAction={logAction} />}
-        {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
-        {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
-        {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
-        {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
-        {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
-        {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
-        {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
-        {tab === "analytics" && <Analytics items={items} />}
-        {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
-        {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
-      </main>
-      <BottomNav nav={nav} tab={tab} setTab={setTab} />
+    <div className="app-shell app-shell-auth" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
+      <Sidebar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
+      <div className="app-shell-main-col">
+        <TopBar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
+        {(!API_URL || sheetsError) && (
+          <div className="px-4 py-2 text-xs flex items-center gap-2 shrink-0" style={{ background: sheetsError ? C.badBg : C.goldSoft, color: C.crimsonDeep }}>
+            <AlertTriangle size={13} className="shrink-0" />
+            <span>{sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง"}</span>
+          </div>
+        )}
+        <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
+          {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
+          {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
+          {tab === "facility" && <Facility items={items} schedule={schedule} pmSchedule={pmSchedule} setTab={setTab} />}
+          {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
+          {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} />}
+          {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
+          {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
+          {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
+          {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
+          {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
+          {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
+          {tab === "analytics" && <Analytics items={items} />}
+          {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
+          {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
+        </main>
+        <BottomNav nav={nav} tab={tab} setTab={setTab} />
+      </div>
     </div>
   );
 }
@@ -731,107 +756,150 @@ export default function App() {
    LOGIN
    ============================================================ */
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
+  const LOGO_URL = "https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png";
+  const MASCOT_URL = "https://i.postimg.cc/hvB9N1n8/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-3.png";
+  const MOBILE_BG_URL = "https://i.postimg.cc/90xFhcT9/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(6).png";
+  const [navOpen, setNavOpen] = useState(false);
   return (
-    <div className="app-shell flex flex-col" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
-      {/* top illustration strip — always visible, sized for the mobile frame instead of a desktop side panel */}
-      <div className="relative shrink-0 overflow-hidden" style={{ height: "34vh", minHeight: 200, borderBottom: "3px solid #C9A15A" }}>
-        <img src="https://i.postimg.cc/KzSFyxxH/ACT-SPORT-CENTER-(2).png" alt="ACT Sport Center mascots"
-          className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center 20%" }} />
-      </div>
+    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
+      {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width */}
+      <header className="relative shrink-0 flex items-center justify-between px-5 md:px-10 py-3 md:py-4"
+        style={{ background: "linear-gradient(90deg,#2a2a2c,#3a3a3c 40%,#4a4a4c)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="flex items-center gap-3 min-w-0">
+          <img src={LOGO_URL} alt="ACT 1961 Sport Center" className="h-10 md:h-14 w-auto shrink-0" style={{ objectFit: "contain" }} />
+        </div>
+        <nav className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+          <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
+          <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
+          <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.white }}>Contact</span>
+        </nav>
+        <button onClick={() => setNavOpen((v) => !v)} className="md:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
+          <Menu size={22} color="rgba(255,255,255,0.85)" />
+        </button>
+        <div className="hidden lg:block text-4xl font-black tracking-widest select-none shrink-0" style={{ color: "rgba(255,255,255,0.12)", letterSpacing: "0.15em" }}>ACT</div>
+        {navOpen && (
+          <div className="md:hidden absolute top-full left-0 right-0 z-20 flex flex-col" style={{ background: "#2a2a2c", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+            <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
+            <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
+            <span className="mx-5 my-2 px-5 py-2 text-sm font-semibold text-center" style={{ background: C.crimson, color: C.white }}>Contact</span>
+          </div>
+        )}
+      </header>
 
-      {/* brushed-metal glass login panel */}
-      <div className="flex-1 relative overflow-y-auto overflow-x-hidden" style={{
+      {/* hero — mascot left, login card right on desktop; stacked on mobile */}
+      <div className="flex-1 relative flex flex-col md:flex-row overflow-y-auto overflow-x-hidden" style={{
         background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
       }}>
-        {/* brushed-metal texture */}
-        <div className="absolute inset-0 opacity-30" style={{
+        <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
           backgroundImage: "repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 3px)",
         }} />
-        <div className="absolute inset-0" style={{
+        <div className="absolute inset-0 pointer-events-none" style={{
           background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
         }} />
 
-        {/* vertical brand wordmark — real image asset, flush to the top-right corner */}
-        <div className="hidden lg:block absolute right-0 top-0 w-24">
-          <img src="https://i.postimg.cc/vBFMdbbL/ACT-SPORT-CENTER.png" alt="ACT SPORT CENTER"
-            className="w-full" style={{ objectFit: "contain" }} />
+        {/* mobile: full-bleed background photo with a black→red filter overlay, per the reference */}
+        <div className="md:hidden absolute inset-0 z-0" style={{
+          backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.15) 0%, rgba(130,15,25,0.15) 45%, rgba(8,3,3,0.75) 100%), url("${MOBILE_BG_URL}")`,
+          backgroundSize: "cover",
+          backgroundPosition: "center top",
+          backgroundRepeat: "no-repeat",
+        }} />
+
+        {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
+        <div className="hidden md:flex relative shrink-0 overflow-hidden md:w-[48%] md:h-full">
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-bottom" />
         </div>
 
-        {/* developer credit, bottom-right */}
-        <div className="absolute bottom-4 right-6 lg:right-32 text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Developer : P.Prayoon-Anutep</div>
-
-        <div className="relative w-full max-w-sm mx-6">
-          <div className="flex items-center gap-3 mb-6">
-            <Users size={30} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
-            <div>
-              <div className="text-lg font-semibold" style={{ color: C.white }}>ACT SportHub</div>
-              <div className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>ลงทะเบียนเข้าใช้งานด้วยรหัสประจำตัวครู</div>
-            </div>
-          </div>
-
-          {/* glass card */}
-          <div className="relative p-6" style={{
-            background: "rgba(255,255,255,0.06)",
-            backdropFilter: "blur(12px)",
-            border: "1px solid rgba(255,255,255,0.14)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)",
-          }}>
-            <h2 className="text-xl font-bold mb-5" style={{ color: C.white }}>Login</h2>
-
-            <div className="relative mb-4">
-              <User size={15} style={{ position: "absolute", left: 12, top: 13, color: "rgba(255,255,255,0.4)" }} />
-              <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
-                placeholder="Teacher ID เช่น T00125"
-                style={{
-                  width: "100%", padding: "10px 12px 10px 34px", fontFamily: FONT, fontSize: 14,
-                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)",
-                  color: C.white, outline: "none",
-                }} />
+        {/* login column */}
+        <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 md:px-14 py-5 md:pt-16 md:pb-10">
+          <h1 className="text-4xl md:text-6xl tracking-tight mb-6 md:mb-10 shrink-0 text-center md:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
+            <span className="block md:hidden" style={{ color: "rgba(255,255,255,0.85)" }}>ACT</span>
+            SPORT CENTER
+          </h1>
+          <div className="flex-1 flex items-start md:items-center justify-center md:justify-start">
+          <div className="w-full max-w-md">
+            <div className="flex items-center gap-3 mb-5 justify-center text-center md:justify-start md:text-left">
+              <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
+              <div>
+                <div className="text-lg font-semibold" style={{ color: C.white }}>ACT SportHub</div>
+                <div className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>ลงทะเบียนเข้าใช้งานด้วยรหัสประจำตัวครู</div>
+              </div>
             </div>
 
-            {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
+            <div className="relative p-6" style={{
+              background: "linear-gradient(160deg, rgba(158,27,43,0.35), rgba(30,30,32,0.55))",
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(232,100,26,0.35)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1), 0 0 40px rgba(200,30,58,0.18)",
+            }}>
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Username</label>
+                <div className="relative">
+                  <User size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
+                  <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
+                    placeholder="Teacher ID เช่น T00125"
+                    className="focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25 transition-all duration-200"
+                    style={{
+                      width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
+                      background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
+                      color: C.white, outline: "none",
+                    }} />
+                </div>
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Password</label>
+                <div className="relative">
+                  <Lock size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
+                  <input type="password" placeholder="Password" disabled
+                    style={{
+                      width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
+                      background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
+                      color: "rgba(255,255,255,0.5)", outline: "none",
+                    }} />
+                </div>
+                <div className="text-[11px] mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>ระบบยืนยันตัวตนด้วยรหัสประจำตัวครูเท่านั้น — ยังไม่ต้องใช้รหัสผ่าน</div>
+              </div>
 
-            {/* GO button — circular red gem, glass-card style */}
-            <div className="flex items-center gap-3 mt-5">
-              <button onClick={() => onLogin(loginId)}
-                className="flex-1 py-2.5 text-sm font-semibold"
-                style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", color: C.white }}>
-                เข้าสู่ระบบ
-              </button>
-              <button onClick={() => onLogin(loginId)}
-                aria-label="Go"
-                className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-bold text-xs"
-                style={{
-                  background: `radial-gradient(circle at 32% 28%, #ff5a72, ${C.crimson} 45%, ${C.crimsonDeep} 100%)`,
-                  boxShadow: "0 0 18px rgba(200,30,58,0.55), inset 0 1px 1px rgba(255,255,255,0.4)",
-                  color: C.white,
-                }}>
-                GO
-              </button>
-            </div>
-          </div>
+              {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
 
-          <div className="mt-6 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
-            © 2026 Assumption College Thonburi<br />ACT Sport Center Resource Intelligence · v1.0.0
-          </div>
-
-          {/* demo accounts */}
-          <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
-            <div className="text-xs font-semibold mb-3" style={{ color: "rgba(255,255,255,0.45)" }}>บัญชีตัวอย่างสำหรับสาธิตแต่ละระดับสิทธิ์</div>
-            <div className="space-y-2">
-              {USERS.map((u) => (
-                <button key={u.id} onClick={() => onLogin(u.id)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-left"
-                  style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)" }}>
-                  <div>
-                    <div className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{u.name}</div>
-                    <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{u.title} · {u.id}</div>
-                  </div>
-                  <Pill fg={C.accent} bg="rgba(228,53,79,0.12)">{ROLE_META[u.role].label}</Pill>
+              <div className="mt-2 md:mt-5 md:flex md:justify-end">
+                <button onClick={() => onLogin(loginId)}
+                  className="w-full md:w-auto px-8 py-3 md:py-2.5 text-sm font-bold transition-all duration-200 active:scale-95 hover:brightness-110 hover:shadow-[0_0_28px_rgba(232,100,26,0.75)]"
+                  style={{
+                    minHeight: 48,
+                    background: "linear-gradient(135deg,#FF8A3D,#E8641A)",
+                    color: C.white,
+                    boxShadow: "0 0 18px rgba(232,100,26,0.55), 0 4px 10px rgba(0,0,0,0.3)",
+                  }}>
+                  Login
                 </button>
-              ))}
+              </div>
             </div>
+
+            <div className="mt-6 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
+              © 2026 Assumption College Thonburi<br />ACT Sport Center Resource Intelligence · v1.0.0
+              <br />Developer : P.Prayoon-Anutep
+            </div>
+
+            {/* demo accounts */}
+            <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+              <div className="text-xs font-semibold mb-3" style={{ color: "rgba(255,255,255,0.45)" }}>บัญชีตัวอย่างสำหรับสาธิตแต่ละระดับสิทธิ์</div>
+              <div className="space-y-2">
+                {USERS.map((u) => (
+                  <button key={u.id} onClick={() => onLogin(u.id)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+                    style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)" }}>
+                    <div>
+                      <div className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{u.name}</div>
+                      <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{u.title} · {u.id}</div>
+                    </div>
+                    <Pill fg={C.accent} bg="rgba(228,53,79,0.12)">{ROLE_META[u.role].label}</Pill>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
           </div>
         </div>
       </div>
@@ -842,12 +910,62 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 /* ============================================================
    SIDEBAR / TOPBAR
    ============================================================ */
+function Sidebar({ user, nav, tab, setTab, onLogout }) {
+  const meta = ROLE_META[user.role];
+  return (
+    <aside className="desktop-sidebar shrink-0 flex-col" style={{ display: "none", width: 260, background: C.navyDeep, borderRight: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="px-5 py-6 flex flex-col items-center text-center shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+        <img src="https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png" alt="ACT 1961 Sport Center" className="w-24" style={{ objectFit: "contain" }} />
+      </div>
+      <button onClick={() => setTab("profile")} className="mx-4 mt-4 mb-2 p-3 flex items-center gap-3 text-left shrink-0"
+        style={{ background: tab === "profile" ? C.crimson : "rgba(255,255,255,0.05)" }}>
+        <div className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center shrink-0" style={{ background: meta.tint }}>
+          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={15} color={C.white} />}
+        </div>
+        <div className="min-w-0">
+          <div className="text-white text-xs font-bold truncate">{user.name}</div>
+          <div className="text-[10px] truncate" style={{ color: "rgba(255,255,255,0.55)" }}>{user.title || meta.label}</div>
+        </div>
+      </button>
+      <nav className="flex-1 overflow-y-auto py-1">
+        {groupedNav(nav).filter((g) => g.items.some(([k]) => k !== "profile")).map((group, gi) => (
+          <div key={group.label} className={gi > 0 ? "mt-1" : ""}>
+            <div className="px-5 pt-3 pb-1 text-[10px] font-bold tracking-wider uppercase" style={{ color: "#6B7699" }}>{group.label}</div>
+            {group.items.filter(([k]) => k !== "profile").map(([key, label, Icon]) => {
+              const active = tab === key;
+              return (
+                <button key={key} onClick={() => setTab(key)}
+                  className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
+                  style={{
+                    color: active ? C.white : "#AEB8D6",
+                    background: active ? "rgba(255,255,255,0.08)" : "transparent",
+                    borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
+                  }}>
+                  <Icon size={16} />{label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+      <div className="px-5 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+        <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
+          <LogOut size={13} /> ออกจากระบบ
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+/* ============================================================
+   TOP BAR + MOBILE DRAWER (mobile only — see Sidebar for desktop)
+   ============================================================ */
 function TopBar({ user, nav, tab, setTab, onLogout }) {
   const meta = ROLE_META[user.role];
   const [drawer, setDrawer] = useState(false);
   return (
     <>
-      <header className="flex items-center justify-between px-3 py-3 shrink-0" style={{ background: C.white, borderBottom: `1px solid ${C.line}`, paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}>
+      <header className="mobile-only flex items-center justify-between px-3 py-3 shrink-0" style={{ background: C.white, borderBottom: `1px solid ${C.line}`, paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}>
         <button onClick={() => setDrawer(true)} className="w-9 h-9 flex items-center justify-center shrink-0" aria-label="เมนู">
           <div className="flex flex-col gap-1">
             <span className="block w-5 h-0.5" style={{ background: C.ink }} />
@@ -871,27 +989,32 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
         <div className="absolute inset-0 z-50 flex" onClick={() => setDrawer(false)}>
           <div className="w-[78%] max-w-[320px] h-full flex flex-col" style={{ background: C.navyDeep }} onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-5 flex items-center gap-2 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", paddingTop: "calc(1.25rem + env(safe-area-inset-top))" }}>
-              <Trophy size={20} style={{ color: C.accent }} />
+              <img src="https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png" alt="ACT 1961 Sport Center" className="w-10 h-10" style={{ objectFit: "contain" }} />
               <div>
                 <div className="text-white font-bold text-sm leading-tight">ACT SPORT CENTER</div>
                 <div className="text-[11px]" style={{ color: "#93A0C4" }}>Resource Intelligence</div>
               </div>
             </div>
-            <nav className="flex-1 py-3 overflow-y-auto">
-              {nav.map(([key, label, Icon]) => {
-                const active = tab === key;
-                return (
-                  <button key={key} onClick={() => { setTab(key); setDrawer(false); }}
-                    className="w-full flex items-center gap-3 px-5 py-3 text-sm text-left transition-colors"
-                    style={{
-                      color: active ? C.white : "#AEB8D6",
-                      background: active ? "rgba(255,255,255,0.08)" : "transparent",
-                      borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
-                    }}>
-                    <Icon size={16} />{label}
-                  </button>
-                );
-              })}
+            <nav className="flex-1 py-2 overflow-y-auto">
+              {groupedNav(nav).map((group, gi) => (
+                <div key={group.label} className={gi > 0 ? "mt-1" : ""}>
+                  <div className="px-5 pt-3 pb-1 text-[10px] font-bold tracking-wider uppercase" style={{ color: "#6B7699" }}>{group.label}</div>
+                  {group.items.map(([key, label, Icon]) => {
+                    const active = tab === key;
+                    return (
+                      <button key={key} onClick={() => { setTab(key); setDrawer(false); }}
+                        className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
+                        style={{
+                          color: active ? C.white : "#AEB8D6",
+                          background: active ? "rgba(255,255,255,0.08)" : "transparent",
+                          borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
+                        }}>
+                        <Icon size={16} />{label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </nav>
             <div className="px-5 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
               <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
@@ -909,7 +1032,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
 function BottomNav({ nav, tab, setTab }) {
   const items = nav.slice(0, 5); // primary items only — everything else lives in the drawer
   return (
-    <nav className="shrink-0 flex items-stretch" style={{
+    <nav className="mobile-only shrink-0 flex items-stretch" style={{
       background: C.white, borderTop: `1px solid ${C.line}`,
       paddingBottom: "env(safe-area-inset-bottom)",
     }}>
@@ -1020,6 +1143,13 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
         <StatCard label="ถูกยืมอยู่" value={k.activeBorrows} sub={k.overdue > 0 ? `${k.overdue} เกินกำหนด` : "ไม่มีเกินกำหนด"} tone="gold" icon={ArrowLeftRight} />
       </div>
 
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <StatCard label="งานเกินกำหนด (ของฉัน)" value={taskCounts.overdue} tone="crimson" icon={AlertTriangle} />
+        <StatCard label="ครบกำหนดวันนี้" value={taskCounts.today} tone="gold" icon={Clock} />
+        <StatCard label="กำลังจะถึง" value={taskCounts.upcoming} tone="navy" icon={CalendarDays} />
+        <StatCard label="เสร็จแล้ว" value={taskCounts.completed} tone="ok" icon={CheckCircle2} />
+      </div>
+
       {(orgOverdueTasks.length > 0 || orgTodayTasks.length > 0 || orgCritical.length > 0) && (
         <div className="p-4 mb-4" style={{ background: C.badBg, border: `1px solid #E9B9C1` }}>
           <div className="flex items-center gap-2 mb-2">
@@ -1035,8 +1165,25 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="col-span-2 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-1" style={{ color: C.navy }}>Asset Health Summary</h3>
+          <div className="text-xs mb-2" style={{ color: C.mute }}>สัดส่วนสุขภาพครุภัณฑ์โดยรวม</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <PieChart>
+              <Pie data={[
+                { name: "ใช้งานได้", value: k.normal, fill: C.ok },
+                { name: "ชำรุด", value: k.damaged, fill: C.crimson },
+                { name: "ถูกยืมอยู่", value: k.activeBorrows, fill: C.gold },
+              ]} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} />
+              <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="flex justify-center gap-3 text-[11px] mt-1" style={{ color: C.slate }}>
+            <span>🟢 ปกติ</span><span>🔴 ชำรุด</span><span>🟡 ยืมอยู่</span>
+          </div>
+        </div>
+        <div className="md:col-span-2 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold" style={{ color: C.navy }}>สุขภาพทรัพยากรแยกตามหมวด (Top 8 ชำรุดสูงสุด)</h3>
           </div>
@@ -1384,7 +1531,24 @@ function ItemEditForm({ item, onSave, manager }) {
 /* ============================================================
    FACILITY
    ============================================================ */
-function Facility({ items }) {
+const THAI_DAY_NOW = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+// นาทีตั้งแต่เที่ยงคืน จาก "HH:MM" — ใช้เทียบช่วงเวลาปัจจุบันกับตารางสอน
+function toMinutes_(hhmm) {
+  const [h, m] = String(hhmm || "0:0").split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function Facility({ items, schedule = [], pmSchedule = [], setTab }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60000); // อัปเดตสถานะทุก 1 นาที
+    return () => clearInterval(t);
+  }, []);
+  const nowDay = THAI_DAY_NOW[now.getDay()];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
   const byLoc = useMemo(() => {
     const m = {};
     LOCATIONS.forEach((l) => { m[l.name] = { ...l, count: 0, ok: 0, damaged: 0 }; });
@@ -1392,27 +1556,97 @@ function Facility({ items }) {
       if (!m[i.loc]) m[i.loc] = { name: i.loc, owner: i.owner, count: 0, ok: 0, damaged: 0 };
       m[i.loc].count += 1; m[i.loc].ok += i.normal; m[i.loc].damaged += i.damaged;
     });
+
+    // สถานะสด: กำลังใช้งานอยู่ตอนนี้หรือไม่ ตามตารางสอน/ตารางใช้ห้องของสถานที่นั้น
+    Object.values(m).forEach((loc) => {
+      const todaysRows = schedule.filter((s) => s.loc === loc.name && s.day === nowDay);
+      const current = todaysRows.find((s) => {
+        const start = toMinutes_(s.start), end = toMinutes_(s.end);
+        return start !== null && end !== null && nowMin >= start && nowMin < end;
+      });
+      const next = todaysRows
+        .filter((s) => { const start = toMinutes_(s.start); return start !== null && start > nowMin; })
+        .sort((a, b) => toMinutes_(a.start) - toMinutes_(b.start))[0];
+      loc.current = current || null;
+      loc.next = next || null;
+
+      // สถิติการใช้งาน: จำนวนคาบ/สัปดาห์ ที่สถานที่นี้ถูกใช้ จากตารางทั้งหมด (ไม่ใช่แค่วันนี้)
+      const weeklyRows = schedule.filter((s) => s.loc === loc.name);
+      loc.periodsPerWeek = weeklyRows.length;
+      loc.hoursPerWeek = weeklyRows.reduce((sum, s) => sum + durationHrs(s.start, s.end), 0);
+
+      // นัดซ่อมบำรุงครั้งถัดไป: จาก pmSchedule ที่อ้างอิงชื่อสถานที่นี้ เลือกวันที่ใกล้ที่สุดที่ยังไม่ผ่าน
+      const upcoming = pmSchedule
+        .filter((p) => p.refName && p.refName.includes(loc.name) && p.nextDate)
+        .sort((a, b) => (a.nextDate < b.nextDate ? -1 : 1))
+        .find((p) => p.nextDate >= TODAY_ISO) || pmSchedule.find((p) => p.refName && p.refName.includes(loc.name));
+      loc.nextMaintenance = upcoming || null;
+    });
+
     return Object.values(m);
-  }, [items]);
+  }, [items, schedule, pmSchedule, nowDay, nowMin]);
+
+  const maxPeriods = Math.max(1, ...byLoc.map((l) => l.periodsPerWeek || 0));
 
   return (
     <div>
-      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สรุปทรัพยากรแยกตามสถานที่จัดเก็บ / พื้นที่ใช้งาน" />
+      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สถานะแบบสด ตามตารางใช้ห้อง พร้อมนัดซ่อมบำรุงและสถิติการใช้งาน" />
       <div className="grid grid-cols-2 gap-4">
-        {byLoc.map((l) => (
-          <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.navy}` }}>
-            <div className="flex items-center gap-2 mb-2">
-              <Building2 size={15} style={{ color: C.navy }} />
-              <span className="font-bold text-sm" style={{ color: C.ink }}>{l.name}</span>
+        {byLoc.map((l) => {
+          const inUse = !!l.current;
+          const utilPct = Math.round(((l.periodsPerWeek || 0) / maxPeriods) * 100);
+          return (
+            <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${inUse ? C.gold : (l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.ok)}` }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Building2 size={15} style={{ color: C.navy }} className="shrink-0" />
+                  <span className="font-bold text-sm truncate" style={{ color: C.ink }}>{l.name}</span>
+                </div>
+                {inUse ? (
+                  <Pill fg={C.crimsonDeep} bg={C.badBg}><span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: C.crimson }} />กำลังใช้งาน</Pill>
+                ) : (
+                  <Pill fg={C.ok} bg={C.okBg}>ว่าง</Pill>
+                )}
+              </div>
+              <div className="text-xs mb-1" style={{ color: C.slate }}>ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
+              {inUse ? (
+                <div className="text-xs mb-2" style={{ color: C.crimsonDeep }}>
+                  {l.current.subject || "ใช้งาน"} · {l.current.teacher || "-"} · {l.current.start}–{l.current.end}
+                </div>
+              ) : l.next ? (
+                <div className="text-xs mb-2" style={{ color: C.slate }}>คาบถัดไปวันนี้: {l.next.start} · {l.next.subject || "-"}</div>
+              ) : (
+                <div className="text-xs mb-2" style={{ color: C.mute }}>ไม่มีคาบใช้งานวันนี้แล้ว</div>
+              )}
+
+              <div className="flex items-center justify-between text-sm mb-3">
+                <div><span className="font-bold">{l.count}</span> <span className="text-xs" style={{ color: C.mute }}>รายการ</span></div>
+                <div style={{ color: C.ok }}><span className="font-bold">{l.ok}</span> <span className="text-xs">ใช้ได้</span></div>
+                <div style={{ color: C.crimson }}><span className="font-bold">{l.damaged}</span> <span className="text-xs">ชำรุด</span></div>
+              </div>
+
+              <div className="mb-3">
+                <div className="flex items-center justify-between text-xs mb-1" style={{ color: C.slate }}>
+                  <span>สถิติการใช้งาน</span>
+                  <span>{l.periodsPerWeek || 0} คาบ/สัปดาห์ · {l.hoursPerWeek.toFixed(1)} ชม./สัปดาห์</span>
+                </div>
+                <div className="h-1.5 w-full" style={{ background: C.line }}>
+                  <div className="h-1.5" style={{ width: `${utilPct}%`, background: C.navy }} />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-xs pt-2" style={{ borderTop: `1px dashed ${C.line}`, color: l.nextMaintenance ? C.warn : C.mute }}>
+                <Wrench size={12} className="shrink-0" />
+                {l.nextMaintenance
+                  ? <span>นัดซ่อมบำรุงถัดไป: <b>{l.nextMaintenance.nextDate}</b> ({l.nextMaintenance.cycle || "-"})</span>
+                  : <span>ยังไม่มีนัดซ่อมบำรุงล่วงหน้า</span>}
+                {setTab && (
+                  <button className="ml-auto underline" style={{ color: C.navy }} onClick={() => setTab("maintenance")}>ดูรายละเอียด</button>
+                )}
+              </div>
             </div>
-            <div className="text-xs mb-3" style={{ color: C.slate }}>ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
-            <div className="flex items-center justify-between text-sm">
-              <div><span className="font-bold">{l.count}</span> <span className="text-xs" style={{ color: C.mute }}>รายการ</span></div>
-              <div style={{ color: C.ok }}><span className="font-bold">{l.ok}</span> <span className="text-xs">ใช้ได้</span></div>
-              <div style={{ color: C.crimson }}><span className="font-bold">{l.damaged}</span> <span className="text-xs">ชำรุด</span></div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1565,14 +1799,29 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction }) {
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
   const [conflict, setConflict] = useState(null); // { form, with }
+  const [budget, setBudget] = useState({ budgets: [], loaded: false });
 
   const mine = !manager && (user.role === "L1" || user.role === "L2");
   const rows = mine ? schedule.filter((s) => s.teacher === user.name) : schedule;
+
+  // งานอื่นที่หัวหน้ามอบหมาย (ไม่ใช่คาบสอน) — จาก Work Management, กรองเฉพาะที่ assign ให้ฉัน
+  const myOtherTasks = useMemo(
+    () => tasks.filter((t) => t.assignee === user.name && t.status !== "COMPLETED" && t.status !== "CANCELLED"),
+    [tasks, user.name]
+  );
+
+  // โครงการ/งบประมาณที่รับผิดชอบ — โหลดจาก Budget module เฉพาะตอนเป็นมุมมองส่วนตัว
+  useEffect(() => {
+    if (!mine || !API_URL) return;
+    loadBudgetData(user.id).then((d) => {
+      setBudget({ budgets: (d.budgets || []).filter((b) => b.owner === user.name), loaded: true });
+    }).catch(() => setBudget({ budgets: [], loaded: true }));
+  }, [mine, user.id, user.name]);
 
   const workload = useMemo(() => {
     const m = {};
@@ -1640,6 +1889,47 @@ function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {mine && (myOtherTasks.length > 0 || budget.budgets.length > 0) && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          {myOtherTasks.length > 0 && (
+            <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5" style={{ color: C.navy }}>
+                <ClipboardList size={14} /> งานอื่นที่ได้รับมอบหมาย
+              </h3>
+              <div className="space-y-2">
+                {myOtherTasks.map((t) => (
+                  <div key={t.id} className="px-3 py-2 flex items-center justify-between gap-2" style={{ border: `1px solid ${C.line}` }}>
+                    <div className="min-w-0">
+                      <div className="text-sm truncate" style={{ color: C.ink }}>{t.title}</div>
+                      <div className="text-xs" style={{ color: C.mute }}>{t.location || "-"}{t.dueDate ? ` · กำหนด ${t.dueDate}` : ""}</div>
+                    </div>
+                    <Pill fg={taskStatusDisplay(t).fg} bg={taskStatusDisplay(t).bg}>{taskStatusDisplay(t).label}</Pill>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {budget.budgets.length > 0 && (
+            <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5" style={{ color: C.navy }}>
+                <DollarSign size={14} /> งบประมาณ/โครงการที่รับผิดชอบ
+              </h3>
+              <div className="space-y-2">
+                {budget.budgets.map((b) => (
+                  <div key={b.id} className="px-3 py-2 flex items-center justify-between gap-2" style={{ border: `1px solid ${C.line}` }}>
+                    <div className="min-w-0">
+                      <div className="text-sm truncate" style={{ color: C.ink }}>{b.name}</div>
+                      <div className="text-xs" style={{ color: C.mute }}>{b.startDate || "-"} – {b.endDate || "-"}</div>
+                    </div>
+                    <div className="text-xs font-semibold shrink-0" style={{ color: C.navy }}>{b.amount.toLocaleString()} บาท</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1864,19 +2154,20 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
   const [showNew, setShowNew] = useState(false);
   const manage = canEdit(user.role) || canManage(user.role);
 
-  const submit = async ({ itemId, qty, symptom }) => {
+  const submit = async ({ itemId, qty, symptom, location }) => {
     const item = items.find((i) => i.id === itemId);
-    const rec = { id: `DM-${Date.now()}`, date: "2026-09-15", itemId, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name, severity: "ปานกลาง", status: "รอตรวจสอบ", action: "", cost: 0 };
+    const loc = location || item.loc || "";
+    const rec = { id: `DM-${Date.now()}`, date: "2026-09-15", itemId, itemCode: item.code, itemName: item.name, qty, symptom, location: loc, reporter: user.name, severity: "ปานกลาง", status: "รอตรวจสอบ", action: "", cost: 0 };
     setDamages((p) => [rec, ...p]);
-    logAction(`แจ้งชำรุด ${item.code} จำนวน ${qty}`);
+    logAction(`แจ้งชำรุด ${item.code} จำนวน ${qty} ที่ ${loc || "-"}`);
     setShowNew(false);
     try {
-      const result = await postToSheetsAwait("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name });
+      const result = await postToSheetsAwait("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, location: loc, reporter: user.name });
       if (result.taskId) {
         setTasks((prev) => [{
           id: result.taskId, title: `ซ่อม/ตรวจสอบ: ${item.name} (${item.code})`, description: symptom,
           priority: "HIGH", status: "TODO", dueDate: "", dueTime: "", assignee: "", createdBy: user.name,
-          location: "", relatedResource: item.code, relatedFacility: "", relatedBorrowId: "",
+          location: loc, relatedResource: item.code, relatedFacility: loc, relatedBorrowId: "",
           relatedDamageId: result.damageId || "", taskType: "maintenance", comments: "",
           createdDate: new Date().toISOString(), completedDate: "",
         }, ...prev]);
@@ -1904,7 +2195,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
-                {["วันที่แจ้ง", "อุปกรณ์", "จำนวน", "อาการ", "ผู้แจ้ง", "ความรุนแรง", "สถานะ", ""].map((h) => (
+                {["วันที่แจ้ง", "อุปกรณ์", "สถานที่", "จำนวน", "อาการ", "ผู้แจ้ง", "ความรุนแรง", "สถานะ", ""].map((h) => (
                   <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>
                 ))}
               </tr>
@@ -1914,6 +2205,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
                 <tr key={d.id} style={{ borderTop: `1px solid ${C.line}` }}>
                   <td className="px-3 py-2 text-xs">{d.date}</td>
                   <td className="px-3 py-2 text-xs">{d.itemName} <span style={{ color: C.mute }}>({d.itemCode})</span></td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{d.location || "-"}</td>
                   <td className="px-3 py-2 text-xs">{d.qty}</td>
                   <td className="px-3 py-2 text-xs">{d.symptom}</td>
                   <td className="px-3 py-2 text-xs">{d.reporter}</td>
@@ -1952,17 +2244,37 @@ function DamageForm({ items, onSubmit }) {
   const [itemId, setItemId] = useState(items[0]?.id || "");
   const [qty, setQty] = useState(1);
   const [symptom, setSymptom] = useState("");
+  const [location, setLocation] = useState(items[0]?.loc || "");
+  const [locTouched, setLocTouched] = useState(false);
+
+  const pickItem = (e) => {
+    const id = e.target.value;
+    setItemId(id);
+    if (!locTouched) {
+      const it = items.find((i) => i.id === id);
+      setLocation(it?.loc || "");
+    }
+  };
+
   return (
     <div>
       <Field label="อุปกรณ์">
-        <select value={itemId} onChange={(e) => setItemId(e.target.value)} style={inputStyle}>
+        <select value={itemId} onChange={pickItem} style={inputStyle}>
           {items.map((i) => <option key={i.id} value={i.id}>{i.code} — {i.name}</option>)}
         </select>
+      </Field>
+      <Field label="สถานที่ (เติมอัตโนมัติจากตำแหน่งเก็บของอุปกรณ์ — แก้ไขได้ถ้าจุดที่ชำรุดไม่ตรง)">
+        <input
+          value={location}
+          onChange={(e) => { setLocTouched(true); setLocation(e.target.value); }}
+          style={inputStyle}
+          placeholder="เช่น สนามฟุตบอล"
+        />
       </Field>
       <Field label="จำนวนที่ชำรุด"><input type="number" min={1} value={qty} onChange={(e) => setQty(Number(e.target.value))} style={inputStyle} /></Field>
       <Field label="อาการ / รายละเอียด"><textarea rows={3} value={symptom} onChange={(e) => setSymptom(e.target.value)} style={inputStyle} /></Field>
       <div className="flex justify-end mt-2">
-        <Btn variant="crimson" onClick={() => onSubmit({ itemId, qty, symptom })} disabled={!symptom}>ส่งรายงานชำรุด</Btn>
+        <Btn variant="crimson" onClick={() => onSubmit({ itemId, qty, symptom, location })} disabled={!symptom}>ส่งรายงานชำรุด</Btn>
       </div>
     </div>
   );
@@ -3051,16 +3363,31 @@ function ExpenseForm({ onSubmit }) {
    PROFILE — landing page after login. Change own photo, see own
    info, and quick-jump into the modules relevant to this user.
    ============================================================ */
-function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, setTab, logAction }) {
+function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, patchTask, setTab, logAction }) {
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
+  const [selectedDay, setSelectedDay] = useState(null); // null = today
+  const [showEditInfo, setShowEditInfo] = useState(false);
   const meta = ROLE_META[user.role];
 
   const myTasks = tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name);
   const myOverdue = myTasks.filter((t) => taskBucket(t) === "overdue").length;
   const myToday = myTasks.filter((t) => taskBucket(t) === "today").length;
   const myPeriods = schedule.filter((s) => s.teacher === user.name).length;
+  const myCompleted = myTasks.filter((t) => t.status === "COMPLETED").length;
+  const completionPct = myTasks.length ? Math.round((myCompleted / myTasks.length) * 100) : 0;
+
+  // week strip — Mon..Sun of the current week, anchored on TODAY (2026-09-17, Thu)
+  const todayDate = new Date(2026, 8, 17);
+  const monday = new Date(todayDate); monday.setDate(todayDate.getDate() - ((todayDate.getDay() + 6) % 7));
+  const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayIso = isoOf(todayDate);
+  const activeIso = selectedDay || todayIso;
+  const dayLabel = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+  const tasksByDay = (iso) => myTasks.filter((t) => t.dueDate === iso);
+  const dayTasks = tasksByDay(activeIso).sort((a, b) => (a.dueTime || "").localeCompare(b.dueTime || ""));
 
   const pick = () => fileRef.current?.click();
   const onFile = async (e) => {
@@ -3080,6 +3407,21 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
     }
   };
 
+  const toggleDone = (t) => {
+    if (!patchTask) return;
+    patchTask(t.id, { status: t.status === "COMPLETED" ? "TODO" : "COMPLETED" });
+  };
+
+  // personal info the user may edit about themselves — Level and Teacher ID are excluded
+  // (permissions stay admin-controlled), and workload/task data is never editable here at all
+  const saveInfo = (patch) => {
+    setUser((u) => ({ ...u, ...patch }));
+    setStaffList((prev) => prev.map((s) => (s.id === user.id ? { ...s, ...patch } : s)));
+    postToSheets("updateStaff", { id: user.id, name: patch.name, dept: patch.dept, role: patch.title, phone: patch.phone });
+    logAction("แก้ไขข้อมูลส่วนตัว");
+    setShowEditInfo(false);
+  };
+
   const links = [
     user.role !== "L0" && { key: "dashboard", label: "หน้าหลัก", icon: LayoutDashboard, desc: "ภาพรวมของคุณวันนี้" },
     user.role !== "L0" && { key: "tasks", label: "งานของฉัน", icon: ClipboardList, desc: `${myTasks.length} งานทั้งหมด${myOverdue ? ` · ${myOverdue} เกินกำหนด` : ""}` },
@@ -3093,19 +3435,19 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
     <div>
       <SectionHead eyebrow="PROFILE" title="โปรไฟล์ของฉัน" sub="ข้อมูลส่วนตัวและทางลัดไปยังงานของคุณ" />
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="p-5 flex flex-col items-center text-center" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <div className="relative mb-3">
-            <div className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden" style={{ background: meta.tint, border: `3px solid ${C.line}` }}>
+            <button onClick={() => setShowEditInfo(true)} className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden" style={{ background: meta.tint, border: `3px solid ${C.line}` }} title="แก้ไขข้อมูลส่วนตัว">
               {user.photoUrl ? (
                 <img src={user.photoUrl} alt={user.name} className="w-full h-full" style={{ objectFit: "cover" }} />
               ) : (
                 <span className="text-2xl font-bold text-white">{user.name?.trim()?.[0] || "?"}</span>
               )}
-            </div>
-            <button onClick={pick} disabled={uploading}
+            </button>
+            <button onClick={() => setShowEditInfo(true)} disabled={uploading}
               className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background: C.crimson, color: C.white, border: `2px solid ${C.white}` }} title="เปลี่ยนรูปโปรไฟล์">
+              style={{ background: C.crimson, color: C.white, border: `2px solid ${C.white}` }} title="แก้ไขข้อมูลส่วนตัว">
               <Pencil size={13} />
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
@@ -3117,29 +3459,134 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
           <div className="mt-3"><Pill fg={meta.tint} bg="#F2F3F7">{meta.label}</Pill></div>
         </div>
 
-        <div className="col-span-2 p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-          <h3 className="text-sm font-bold mb-4" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div><div className="text-xs" style={{ color: C.mute }}>Teacher ID</div><div className="font-mono font-medium" style={{ color: C.ink }}>{user.id}</div></div>
-            <div><div className="text-xs" style={{ color: C.mute }}>หน่วยงาน</div><div className="font-medium" style={{ color: C.ink }}>{user.dept || "-"}</div></div>
-            <div><div className="text-xs" style={{ color: C.mute }}>ตำแหน่ง/หน้าที่</div><div className="font-medium" style={{ color: C.ink }}>{user.title || "-"}</div></div>
-            <div><div className="text-xs" style={{ color: C.mute }}>ระดับสิทธิ์</div><div className="font-medium" style={{ color: C.ink }}>{user.role} — {meta.label}</div></div>
+        {/* circular completion gauge — echoes the "Efficiency" ring style, in our palette */}
+        <div className="p-5 flex flex-col items-center justify-center text-center" style={{ background: C.navyDeep, border: `1px solid ${C.line}` }}>
+          <CompletionRing pct={completionPct} />
+          <div className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.55)" }}>อัตราความสำเร็จงาน</div>
+          <div className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>{myCompleted} / {myTasks.length} งาน</div>
+        </div>
+      </div>
+
+      <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+        <h3 className="text-sm font-bold mb-4" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div><div className="text-xs" style={{ color: C.mute }}>Teacher ID</div><div className="font-mono font-medium" style={{ color: C.ink }}>{user.id}</div></div>
+          <div><div className="text-xs" style={{ color: C.mute }}>หน่วยงาน</div><div className="font-medium" style={{ color: C.ink }}>{user.dept || "-"}</div></div>
+          <div><div className="text-xs" style={{ color: C.mute }}>ตำแหน่ง/หน้าที่</div><div className="font-medium" style={{ color: C.ink }}>{user.title || "-"}</div></div>
+          <div><div className="text-xs" style={{ color: C.mute }}>ระดับสิทธิ์</div><div className="font-medium" style={{ color: C.ink }}>{user.role} — {meta.label}</div></div>
+        </div>
+        {(myOverdue > 0 || myToday > 0) && (
+          <div className="mt-4 p-3 flex items-center gap-2" style={{ background: C.badBg }}>
+            <AlertTriangle size={14} style={{ color: C.crimson }} />
+            <span className="text-xs" style={{ color: C.crimsonDeep }}>
+              {myOverdue > 0 && `${myOverdue} งานเกินกำหนด `}{myToday > 0 && `· ${myToday} งานครบกำหนดวันนี้`}
+            </span>
           </div>
-          {(myOverdue > 0 || myToday > 0) && (
-            <div className="mt-4 p-3 flex items-center gap-2" style={{ background: C.badBg }}>
-              <AlertTriangle size={14} style={{ color: C.crimson }} />
-              <span className="text-xs" style={{ color: C.crimsonDeep }}>
-                {myOverdue > 0 && `${myOverdue} งานเกินกำหนด `}{myToday > 0 && `· ${myToday} งานครบกำหนดวันนี้`}
-              </span>
+        )}
+      </div>
+
+      {/* week strip + day's tasks — echoes the date-strip task-app reference, in our palette */}
+      {user.role !== "L0" && (
+        <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold" style={{ color: C.navy }}>งานประจำสัปดาห์</h3>
+            <span className="text-xs" style={{ color: C.mute }}>{new Date(activeIso).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}</span>
+          </div>
+          <div className="grid grid-cols-7 gap-1.5 mb-4">
+            {weekDays.map((d) => {
+              const iso = isoOf(d);
+              const isToday = iso === todayIso;
+              const isActive = iso === activeIso;
+              const count = tasksByDay(iso).length;
+              return (
+                <button key={iso} onClick={() => setSelectedDay(iso === todayIso ? null : iso)}
+                  className="flex flex-col items-center py-2"
+                  style={{ background: isActive ? C.crimson : C.paper, border: `1px solid ${isActive ? C.crimson : C.line}` }}>
+                  <span className="text-[10px]" style={{ color: isActive ? "rgba(255,255,255,0.75)" : C.mute }}>{dayLabel[d.getDay()]}</span>
+                  <span className="text-sm font-bold mt-0.5" style={{ color: isActive ? C.white : isToday ? C.crimson : C.ink }}>{d.getDate()}</span>
+                  {count > 0 && <span className="w-1 h-1 rounded-full mt-1" style={{ background: isActive ? C.white : C.crimson }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          {dayTasks.length === 0 ? (
+            <div className="text-xs text-center py-6" style={{ color: C.mute }}>ไม่มีงานในวันนี้ 🎉</div>
+          ) : (
+            <div className="space-y-2">
+              {dayTasks.map((t) => {
+                const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
+                const done = t.status === "COMPLETED";
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-3 py-2.5" style={{ background: done ? C.okBg : C.paper, borderLeft: `3px solid ${done ? C.ok : pm.fg}` }}>
+                    <button onClick={() => toggleDone(t)}
+                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                      style={{ border: `2px solid ${done ? C.ok : C.line}`, background: done ? C.ok : "transparent" }}>
+                      {done && <CheckCircle2 size={12} color={C.white} />}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate" style={{ color: done ? C.mute : C.ink, textDecoration: done ? "line-through" : "none" }}>{t.title}</div>
+                      {t.location && <div className="text-xs" style={{ color: C.mute }}>{t.location}</div>}
+                    </div>
+                    {t.dueTime && <span className="text-xs font-mono shrink-0" style={{ color: C.slate }}>{t.dueTime}</span>}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-      </div>
+      )}
 
       <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ทางลัด</h3>
       <div className="grid grid-cols-2 gap-4">
         {links.map((l) => <QuickAction key={l.key} icon={l.icon} title={l.label} desc={l.desc} onClick={() => setTab(l.key)} />)}
       </div>
+
+      {showEditInfo && (
+        <Modal title="แก้ไขข้อมูลส่วนตัว" onClose={() => setShowEditInfo(false)}>
+          <EditProfileForm user={user} onChangePhoto={pick} uploading={uploading} onSave={saveInfo} onClose={() => setShowEditInfo(false)} />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+function EditProfileForm({ user, onChangePhoto, uploading, onSave, onClose }) {
+  const [form, setForm] = useState({ name: user.name || "", dept: user.dept || "", title: user.title || "", phone: user.phone || "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.name.trim();
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.navy }}>
+          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <span className="text-white font-bold">{user.name?.[0] || "?"}</span>}
+        </div>
+        <Btn small variant="ghost" onClick={onChangePhoto} disabled={uploading} icon={Upload}>{uploading ? "กำลังอัปโหลด..." : "เปลี่ยนรูปโปรไฟล์"}</Btn>
+      </div>
+      <Field label="ชื่อ-นามสกุล *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field>
+      <Field label="หน่วยงาน"><input value={form.dept} onChange={set("dept")} style={inputStyle} /></Field>
+      <Field label="ตำแหน่ง/หน้าที่"><input value={form.title} onChange={set("title")} style={inputStyle} /></Field>
+      <Field label="เบอร์โทร"><input value={form.phone} onChange={set("phone")} style={inputStyle} /></Field>
+      <div className="text-xs mb-4 p-2" style={{ background: C.paper, color: C.mute }}>
+        Teacher ID และระดับสิทธิ์ (Level) แก้ไขเองไม่ได้ — ต้องให้ผู้ดูแลระบบ (L3) เป็นผู้เปลี่ยนให้เท่านั้น
+      </div>
+      <div className="flex justify-end gap-2">
+        <Btn variant="ghost" onClick={onClose}>ยกเลิก</Btn>
+        <Btn onClick={() => onSave(form)} disabled={!valid}>บันทึก</Btn>
+      </div>
+    </div>
+  );
+}
+
+function CompletionRing({ pct }) {
+  const r = 34, c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  return (
+    <svg width="88" height="88" viewBox="0 0 88 88">
+      <circle cx="44" cy="44" r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" />
+      <circle cx="44" cy="44" r={r} fill="none" stroke={C.accent} strokeWidth="8" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={offset} transform="rotate(-90 44 44)" />
+      <text x="44" y="49" textAnchor="middle" fontSize="20" fontWeight="700" fill={C.white} fontFamily={FONT}>{pct}%</text>
+    </svg>
   );
 }

@@ -3819,3 +3819,20 @@ function CompletionRing({ pct }) {
     </svg>
   );
 }
+
+
+// ใน useEffect สำหรับ teacher list:
+useEffect(() => {
+  const cached = localStorage.getItem('teacherList');
+  if (cached && Date.now() - JSON.parse(cached).time < 600000) { // 10 min cache
+    setTeacherList(JSON.parse(cached).data);
+    return;
+  }
+  
+  fetch(`${API_URL}?action=getTeacherScheduleList`)
+    .then(r => r.json())
+    .then(data => {
+      localStorage.setItem('teacherList', JSON.stringify({ data: data.teachers, time: Date.now() }));
+      setTeacherList(data.teachers);
+    });
+}, []);

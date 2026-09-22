@@ -3791,6 +3791,22 @@ function EditProfileForm({ user, onChangePhoto, uploading, onSave, onClose }) {
   );
 }
 
+// ใน useEffect สำหรับ teacher list:
+useEffect(() => {
+  const cached = localStorage.getItem('teacherList');
+  if (cached && Date.now() - JSON.parse(cached).time < 600000) { // 10 min cache
+    setTeacherList(JSON.parse(cached).data);
+    return;
+  }
+  
+  fetch(`${API_URL}?action=getTeacherScheduleList`)
+    .then(r => r.json())
+    .then(data => {
+      localStorage.setItem('teacherList', JSON.stringify({ data: data.teachers, time: Date.now() }));
+      setTeacherList(data.teachers);
+    });
+}, []);
+
 function CompletionRing({ pct }) {
   const r = 34, c = 2 * Math.PI * r;
   const offset = c - (pct / 100) * c;

@@ -120,7 +120,7 @@ async function loadFromSheets() {
     id: `SC-${r._row}`, _row: r._row, day: r["วัน"], start: fmtTime(r["เวลาเริ่ม"]), end: fmtTime(r["เวลาจบ"]),
     subject: r["วิชา / กิจกรรม"] || "", teacher: r["ครูผู้สอน"] || "", loc: r["สถานที่"] || "",
     group: r["ระดับชั้น / กลุ่ม"] || "", equipment: r["อุปกรณ์ที่ใช้"] || "", qty: r["จำนวนที่ใช้"] || "", note: r["หมายเหตุ"] || "",
-  })).filter((s) => s.day); // skip fully blank template rows
+  })).filter((s) => isValidSheetValue(s.day) && isValidSheetValue(s.start)); // skip error rows and blank template rows
   const tasks = (data.tasks || []).map((r) => ({
     id: r["ID"], _row: r._row, title: r["Title"] || "", description: r["Description"] || "",
     priority: r["Priority"] || "NORMAL", status: r["Status"] || "TODO",
@@ -135,16 +135,19 @@ async function loadFromSheets() {
     id: r["ID"], title: r["ชื่องาน"] || "", start: fmtDate(r["วันที่เริ่ม"]), end: fmtDate(r["วันที่สิ้นสุด"]) || fmtDate(r["วันที่เริ่ม"]),
     allDay: r["ทั้งวัน"] === "TRUE" || r["ทั้งวัน"] === true, dept: r["หน่วยงานเจ้าของ"] || "", owner: r["ผู้รับผิดชอบ"] || "",
     loc: r["สถานที่"] || "", description: r["รายละเอียด"] || "", status: r["สถานะ"] || "scheduled",
-  }));
+  })).filter((e) => isValidSheetValue(e.start) && isValidSheetValue(e.title)); // skip error rows
   const repairs = (data.repairs || []).map((r) => ({
     id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", date: fmtDate(r["วันที่ซ่อม"]),
     description: r["รายละเอียด"] || "", cost: Number(r["ค่าใช้จ่าย"]) || 0, owner: r["ผู้รับผิดชอบ"] || "",
     vendor: r["ร้าน/ช่าง"] || "", receiptUrl: r["ลิงก์ใบเสร็จ"] || "", status: r["สถานะ"] || "",
+    // รายงานผลการซ่อมจากหน่วยงานภายนอก (คอลัมน์เพิ่มโดย Extras.gs)
+    condition: r["สภาพหลังซ่อม"] || "", result: r["ผลการซ่อม"] || "", recommendation: r["คำแนะนำจากช่าง"] || "",
+    warrantyUntil: fmtDate(r["รับประกันถึง"]), reportUrl: r["ลิงก์รายงานผล"] || "",
   }));
   const pmSchedule = (data.pmSchedule || []).map((r) => ({
     id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", cycle: r["รอบซ่อม"] || "",
     nextDate: fmtDate(r["วันนัดถัดไป"]), owner: r["ผู้รับผิดชอบ"] || "", note: r["หมายเหตุ"] || "",
-  }));
+  })).filter((p) => isValidSheetValue(p.nextDate) && isValidSheetValue(p.refName)); // skip error rows
   const docs = (data.docs || []).map((r) => ({
     id: r["ID"], title: r["ชื่อเอกสาร"] || "", category: r["หมวดหมู่"] || "อื่นๆ", url: r["ลิงก์ไฟล์"] || "",
     uploadedBy: r["อัปโหลดโดย"] || "", updatedDate: fmtDate(r["วันที่อัปเดต"]), version: r["เวอร์ชัน"] || "1",
@@ -157,6 +160,17 @@ function fmtTime(v) {
   try { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; } catch { return String(v); }
 }
 
+// ตรวจสอบว่าเป็นค่าข้อมูลจาก Google Sheets ที่เสียหายหรือเป็น error formula
+function isValidSheetValue(v) {
+  if (!v) return false;
+  const str = String(v).trim();
+  // ตัดทิ้งค่า #N/A, #VALUE!, #DIV/0! และ error อื่นๆ จาก Sheets
+  if (str.startsWith("#")) return false;
+  // ตัดทิ้งค่าว่างหรือ "-"
+  if (str === "" || str === "-") return false;
+  return true;
+}
+
 /* ============================================================
    ตารางสอนรายครู — ดึงจากชีต "ตารางสอนศูนย์กีฬา" ผ่าน
    Apps Script action=teachingSchedule (ไฟล์ apps-script/TeachingSchedule.gs)
@@ -167,7 +181,17 @@ function fmtTime(v) {
 async function loadTeachingSchedule() {
   const data = await sheetsFetch(`${TEACHING_API_URL}?action=teachingSchedule`);
   if (!data || !Array.isArray(data.slots)) throw new Error(data?.error || "teachingSchedule not available");
+  // ข้ามแท็บที่ไม่ใช่ตารางรายคน: แท็บรวม (เช่น "รวมกีฬา") และแท็บที่ข้อมูลซ้ำกับครูคนก่อนทุกช่อง
+  // (เกิดจากสูตรอ้างอิงผิด เช่น ครูประจำระดับ ป.2–ม.6 ที่เหมือน ป.1) — ไม่งั้นตารางรวมกีฬาจะซ้ำหลายเท่า
+  const skip = new Set((data.teachers || []).filter((t) => /รวม/.test(t.sheetName || "")).map((t) => t.id));
+  const seenGrid = new Map();
+  (data.teachers || []).forEach((t) => {
+    if (skip.has(t.id)) return;
+    const sig = data.slots.filter((s) => s.teacherId === t.id).map((s) => `${s.dayIndex}:${s.period}:${s.raw}`).join("|");
+    if (sig && seenGrid.has(sig)) skip.add(t.id); else if (sig) seenGrid.set(sig, t.id);
+  });
   const rows = data.slots
+    .filter((s) => !skip.has(s.teacherId))
     .filter((s) => s.start && s.end && s.day)
     .map((s) => ({
       id: `TS-${s.id}`,
@@ -192,6 +216,15 @@ function mergeSchedules(base, extra) {
   const key = (s) => `${normTeacherName(s.teacher)}|${s.day}|${s.start}|${s.end}`;
   const seen = new Set(base.map(key));
   return [...base, ...extra.filter((s) => !seen.has(key(s)))];
+}
+
+// แคชตารางสอนไว้ในเครื่อง — เปิดแอพครั้งถัดไปเห็นตารางทันที แล้วค่อยอัปเดตจาก Sheets เบื้องหลัง
+const SCHEDULE_CACHE_KEY = "act.schedule.cache.v1";
+function readScheduleCache() {
+  try { return JSON.parse(localStorage.getItem(SCHEDULE_CACHE_KEY) || "null") || {}; } catch { return {}; }
+}
+function writeScheduleCache(patch) {
+  try { localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify({ ...readScheduleCache(), ...patch, savedAt: Date.now() })); } catch { /* ignore */ }
 }
 
 async function loadBudgetData(teacherId) {
@@ -659,7 +692,7 @@ export default function App() {
   const [damages, setDamages] = useState([]);
   const [actionsLog, setActionsLog] = useState([]);
   const [staffList, setStaffList] = useState(STAFF);
-  const [schedule, setSchedule] = useState([]);
+  const [schedule, setSchedule] = useState(() => readScheduleCache().base || []);
   const [tasks, setTasks] = useState([]);
   const [orgEvents, setOrgEvents] = useState([]);
   const [repairs, setRepairs] = useState([]);
@@ -667,28 +700,36 @@ export default function App() {
   const [docs, setDocs] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
-  const [scheduleWarnings, setScheduleWarnings] = useState([]);
+  const [scheduleWarnings, setScheduleWarnings] = useState(() => readScheduleCache().warnings || []);
+  // ตารางสอนจากชีตรายครู เก็บแยกจาก schedule หลัก แล้วรวมกันตอนแสดงผล
+  // (โหลดพร้อมกันได้ ไม่ต้องรอกัน และไม่เขียนทับกัน)
+  const [teachingRows, setTeachingRows] = useState(() => readScheduleCache().teaching || []);
+  const [scheduleLoaded, setScheduleLoaded] = useState(() => !!readScheduleCache().savedAt);
+  const allSchedule = useMemo(() => mergeSchedules(schedule, teachingRows), [schedule, teachingRows]);
 
   // persistence — Google Sheets backend when API_URL is set, else local shared storage
   useEffect(() => {
+    // ตารางสอนรายครู — เริ่มโหลดทันทีพร้อมข้อมูลหลัก (ไม่ต้องรอกัน)
+    if (TEACHING_API_URL) {
+      loadTeachingSchedule()
+        .then(({ rows, warnings }) => {
+          setTeachingRows(rows); setScheduleWarnings(warnings); setScheduleLoaded(true);
+          writeScheduleCache({ teaching: rows, warnings });
+        })
+        .catch(() => {});
+    }
     (async () => {
       if (API_URL) {
         try {
           const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc, tasks: tk, orgEvents: oe, repairs: rp, pmSchedule: pm, docs: dc } = await loadFromSheets();
           setItems(si); setBorrows(sb); setDamages(sd);
           if (ss && ss.length) setStaffList(ss);
-          setSchedule(sc || []);
+          setSchedule(sc || []); setScheduleLoaded(true);
+          writeScheduleCache({ base: sc || [] });
           setTasks(tk || []);
           setOrgEvents(oe || []); setRepairs(rp || []); setPmSchedule(pm || []); setDocs(dc || []);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
-        // ตารางสอนรายครู โหลดแยก ไม่ให้หน้าแรกต้องรอ — ถ้ายังไม่ได้ deploy สคริปต์ก็ข้ามไปเงียบๆ
-        loadTeachingSchedule()
-          .then(({ rows, warnings }) => {
-            setSchedule((prev) => mergeSchedules(prev, rows));
-            setScheduleWarnings(warnings);
-          })
-          .catch(() => {});
         return;
       }
       try {
@@ -809,10 +850,10 @@ export default function App() {
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-          {tab === "facility" && <Facility items={items} schedule={schedule} pmSchedule={pmSchedule} setTab={setTab} />}
+          {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
-          {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} />}
+          {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
@@ -1879,7 +1920,7 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [] }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true }) {
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -1992,7 +2033,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
-          {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
+          {!loaded ? "กำลังโหลดตารางสอน…" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
         </div>
       ) : mine ? (
         <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
@@ -2120,7 +2161,7 @@ function SportScheduleBoard({ rows, canDelete, onDelete }) {
       <div className="flex gap-1.5 mb-3 overflow-x-auto">
         {dayList.map((d) => (
           <button key={d} onClick={() => setDay(d)} className="px-3 py-1.5 text-xs font-semibold shrink-0"
-            style={d === day ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate, border: `1px solid ${C.line}` }}>
+            style={d === day ? { background: dayColor(d).bar, color: C.white } : { background: dayColor(d).bg, color: dayColor(d).fg, border: `1px solid ${dayColor(d).bar}` }}>
             {d} <span style={{ opacity: 0.7 }}>({countOf(d)})</span>
           </button>
         ))}
@@ -2142,7 +2183,7 @@ function SportScheduleBoard({ rows, canDelete, onDelete }) {
               </div>
               <div className="p-2 space-y-1.5">
                 {bySlot[k].map((r) => {
-                  const col = scheduleCardColor(r.dept || r.subject);
+                  const col = dayColor(r.day);
                   return (
                     <div key={r.id} className="px-2.5 py-1.5 flex items-start justify-between gap-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
                       <div className="min-w-0">
@@ -2218,21 +2259,17 @@ function ScheduleForm({ staffList, onSubmit, initial, submitLabel = "บัน�
   );
 }
 
-// สีการ์ดในตารางแบบกริด — ไล่สีตามชื่อวิชา/กิจกรรม ให้ดูเป็นระเบียบและแยกแยะง่าย
-const SCHEDULE_CARD_COLORS = [
-  { bg: "#F1D2D6", fg: "#7A1220", bar: C.crimson },
-  { bg: "#DCEEFB", fg: "#1B5E8A", bar: "#2E8FCB" },
-  { bg: "#E3F3E6", fg: "#1E7A4C", bar: "#37A868" },
-  { bg: "#FBF1DF", fg: "#8A5A0C", bar: "#B8791A" },
-  { bg: "#EDE3FB", fg: "#5B3B9E", bar: "#7C4FD1" },
-  { bg: "#FDE6EF", fg: "#9E3B6E", bar: "#D15C97" },
-];
-function scheduleCardColor(subject) {
-  let h = 0;
-  const s = String(subject || "");
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % SCHEDULE_CARD_COLORS.length;
-  return SCHEDULE_CARD_COLORS[h < 0 ? 0 : h];
-}
+// สีประจำวัน: จันทร์เหลือง อังคารชมพู พุธเขียว พฤหัสส้ม ศุกร์ฟ้า เสาร์ม่วง (อาทิตย์แดง)
+const DAY_COLORS = {
+  "จันทร์": { bg: "#FFF6CC", fg: "#7A5A00", bar: "#E6B800" },
+  "อังคาร": { bg: "#FCE4EF", fg: "#9E2A5E", bar: "#E0609A" },
+  "พุธ": { bg: "#E3F5E6", fg: "#1E6B3F", bar: "#3DAA63" },
+  "พฤหัสบดี": { bg: "#FFE9D6", fg: "#9A4A0B", bar: "#F08A2E" },
+  "ศุกร์": { bg: "#E0F2FC", fg: "#135E86", bar: "#3BA7DE" },
+  "เสาร์": { bg: "#EFE5FB", fg: "#5B3B9E", bar: "#8E5BD6" },
+  "อาทิตย์": { bg: "#FBE3E3", fg: "#8C1C1C", bar: "#D9423F" },
+};
+function dayColor(day) { return DAY_COLORS[day] || DAY_COLORS["จันทร์"]; }
 
 // ตารางสอนแบบกริด (วัน x คาบ) สำหรับมุมมอง "ตารางสอนของฉัน" — คลิกที่คาบซึ่งเพิ่มเอง
 // ในระบบ (มี _row) เพื่อแก้ไข/ลบรายครั้งได้ทันที ส่วนคาบที่ดึงมาจากชีตตารางสอนกลาง
@@ -2261,7 +2298,7 @@ function ScheduleGrid({ rows, onEdit, onDelete }) {
           <tr>
             <th className="text-left px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 100 }}>เวลา</th>
             {dayList.map((d) => (
-              <th key={d} className="text-center px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 150 }}>{d}</th>
+              <th key={d} className="text-center px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 150, borderBottom: `4px solid ${dayColor(d).bar}` }}>{d}</th>
             ))}
           </tr>
         </thead>
@@ -2272,14 +2309,14 @@ function ScheduleGrid({ rows, onEdit, onDelete }) {
               {dayList.map((d) => {
                 const s = rows.find((r) => r.day === d && r.start === slot.start && r.end === slot.end);
                 if (!s) return <td key={d} className="px-2 py-2 text-center text-xs align-middle" style={{ color: C.mute }}>–</td>;
-                const col = scheduleCardColor(s.subject);
+                const col = dayColor(d);
                 const editable = !!s._row;
                 return (
                   <td key={d} className="px-2 py-2 align-top">
                     <div className="p-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
                       <div className="text-xs font-bold" style={{ color: col.fg }}>{s.subject}</div>
                       {s.loc && <div className="text-[11px] mt-0.5" style={{ color: col.fg }}>{s.loc}</div>}
-                      {s.group && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.85 }}>{s.group}</div>}
+                      {s.group && s.group !== s.subject && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.85 }}>{s.group}</div>}
                       {s.source === "teachingSheet" && s.note && <div className="text-[10px]" style={{ color: col.fg, opacity: 0.75 }}>{s.note}</div>}
                       {editable ? (
                         <div className="flex gap-2 mt-1.5">
@@ -3169,12 +3206,33 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
   const manager = canEdit(user.role) || canManage(user.role);
   const [showRepair, setShowRepair] = useState(false);
   const [showPM, setShowPM] = useState(false);
+  const [viewRepair, setViewRepair] = useState(null);   // ดูรายละเอียด/รายงานผล
+  const [reportFor, setReportFor] = useState(null);     // บันทึกผลซ่อมย้อนหลัง
 
+  const saveReport = async (id, report) => {
+    if (!hasRepairReport(report)) return true;
+    try {
+      await postToSheetsAwait("updateRepairReport", { id, ...report });
+      return true;
+    } catch (e) {
+      alert("บันทึกประวัติซ่อมแล้ว แต่บันทึกรายงานผลไม่สำเร็จ: " + (e.message || e) + "\n(ตรวจว่าได้ติดตั้ง Extras.gs ใน Apps Script แล้ว)");
+      return false;
+    }
+  };
   const addRepair = async (form) => {
-    const r = await postToSheetsAwait("addRepair", form);
-    setRepairs((prev) => [{ id: r.id, ...form }, ...prev]);
+    const { report, ...base } = form;
+    const r = await postToSheetsAwait("addRepair", base);
+    const ok = await saveReport(r.id, report);
+    setRepairs((prev) => [{ id: r.id, ...base, ...(ok ? report : {}) }, ...prev]);
     logAction(`บันทึกประวัติซ่อม: ${form.refName} (${form.cost.toLocaleString()} บาท)`);
     setShowRepair(false);
+  };
+  const updateReport = async (rep, report) => {
+    const ok = await saveReport(rep.id, report);
+    if (!ok) return;
+    setRepairs((prev) => prev.map((x) => (x.id === rep.id ? { ...x, ...report } : x)));
+    logAction(`บันทึกผลการซ่อม: ${rep.refName} — ${report.condition || report.status || ""}`);
+    setReportFor(null); setViewRepair(null);
   };
   const addPM = async (form) => {
     const r = await postToSheetsAwait("addPM", form);
@@ -3219,18 +3277,25 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
-                {["วันที่ซ่อม", "อุปกรณ์/สถานที่", "รายละเอียด", "ค่าใช้จ่าย", "ผู้รับผิดชอบ", "ร้าน/ช่าง"].map((h) => <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>)}
+                {["วันที่ซ่อม", "อุปกรณ์/สถานที่", "รายละเอียด", "ค่าใช้จ่าย", "ผู้รับผิดชอบ", "ร้าน/ช่าง", "ผลการซ่อม"].map((h) => <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {repairs.map((r) => (
-                <tr key={r.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                <tr key={r.id} onClick={() => setViewRepair(r)} className="cursor-pointer hover:bg-gray-50" style={{ borderTop: `1px solid ${C.line}` }}>
                   <td className="px-3 py-2 text-xs">{r.date}</td>
                   <td className="px-3 py-2 text-sm">{r.refName}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{r.description}</td>
                   <td className="px-3 py-2 text-xs font-mono">{r.cost.toLocaleString()} ฿</td>
                   <td className="px-3 py-2 text-xs">{r.owner}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.mute }}>{r.vendor || "-"}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {r.condition ? (
+                      <Pill fg={conditionTone(r.condition).fg} bg={conditionTone(r.condition).bg}>{r.condition}</Pill>
+                    ) : manager ? (
+                      <button onClick={(e) => { e.stopPropagation(); setReportFor(r); }} className="underline" style={{ color: C.crimson }}>+ บันทึกผล</button>
+                    ) : <span style={{ color: C.mute }}>-</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -3243,6 +3308,21 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
           <RepairForm items={items} staffList={staffList} onSubmit={addRepair} />
         </Modal>
       )}
+      {viewRepair && (
+        <Modal title="รายละเอียดการซ่อม" onClose={() => setViewRepair(null)} wide>
+          <RepairDetail r={viewRepair} />
+          {manager && (
+            <div className="flex justify-end mt-4">
+              <Btn onClick={() => { setReportFor(viewRepair); setViewRepair(null); }} icon={Pencil}>{viewRepair.condition ? "แก้ไขรายงานผล" : "บันทึกผลการซ่อม"}</Btn>
+            </div>
+          )}
+        </Modal>
+      )}
+      {reportFor && (
+        <Modal title={`รายงานผลการซ่อม — ${reportFor.refName}`} onClose={() => setReportFor(null)} wide>
+          <RepairReportFields initial={reportFor} onSubmit={(report) => updateReport(reportFor, report)} submitLabel="บันทึกผลการซ่อม" />
+        </Modal>
+      )}
       {showPM && (
         <Modal title="ตั้งนัดซ่อมล่วงหน้า" onClose={() => setShowPM(false)} wide>
           <PMForm items={items} staffList={staffList} onSubmit={addPM} />
@@ -3252,25 +3332,122 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
   );
 }
 
+const TODAY_STR = () => new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD ตามเวลาเครื่อง
+const REPAIR_STATUSES = ["เสร็จสิ้น", "กำลังซ่อม", "รออะไหล่", "ซ่อมไม่ได้"];
+const REPAIR_CONDITIONS = ["ใช้งานได้ปกติ", "ใช้งานได้บางส่วน", "ใช้งานไม่ได้ ต้องเปลี่ยนใหม่", "รอตรวจสอบซ้ำ"];
+function conditionTone(c) {
+  if (c === "ใช้งานได้ปกติ") return { fg: C.ok, bg: C.okBg };
+  if (c === "ใช้งานได้บางส่วน" || c === "รอตรวจสอบซ้ำ") return { fg: C.warn, bg: C.warnBg };
+  return { fg: C.bad, bg: C.badBg };
+}
+function hasRepairReport(r) {
+  return !!(r && (r.condition || r.result || r.recommendation || r.warrantyUntil || r.reportUrl || r.status));
+}
+
+// ส่วนรายงานผลการซ่อม — ใช้ทั้งตอนบันทึกใหม่ และตอนบันทึกผลย้อนหลัง
+function RepairReportFields({ initial = {}, onChange, onSubmit, submitLabel }) {
+  const [rep, setRep] = useState({
+    status: initial.status || "เสร็จสิ้น", condition: initial.condition || "", result: initial.result || "",
+    recommendation: initial.recommendation || "", warrantyUntil: initial.warrantyUntil || "", reportUrl: initial.reportUrl || "",
+  });
+  const set = (k) => (e) => setRep((r) => { const n = { ...r, [k]: e.target.value }; onChange && onChange(n); return n; });
+  const urlOk = !rep.reportUrl || /^https?:\/\//i.test(rep.reportUrl.trim());
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="สถานะงานซ่อม">
+        <select value={rep.status} onChange={set("status")} style={inputStyle}>{REPAIR_STATUSES.map((x) => <option key={x}>{x}</option>)}</select>
+      </Field>
+      <Field label="สภาพหลังซ่อม">
+        <select value={rep.condition} onChange={set("condition")} style={inputStyle}>
+          <option value="">— ยังไม่ระบุ —</option>{REPAIR_CONDITIONS.map((x) => <option key={x}>{x}</option>)}
+        </select>
+      </Field>
+      <div className="col-span-2">
+        <Field label="ผลการซ่อม (ช่าง/หน่วยงานภายนอกแจ้งว่าอย่างไร)">
+          <textarea rows={3} value={rep.result} onChange={set("result")} style={inputStyle} placeholder="เช่น เปลี่ยนมอเตอร์ใหม่ ทดสอบแล้วใช้งานได้ปกติ / พบว่าแผงวงจรเสีย ต้องสั่งอะไหล่" />
+        </Field>
+      </div>
+      <div className="col-span-2">
+        <Field label="คำแนะนำเพิ่มเติมจากช่าง">
+          <textarea rows={2} value={rep.recommendation} onChange={set("recommendation")} style={inputStyle} placeholder="เช่น ควรทำความสะอาดทุก 3 เดือน / ไม่ควรใช้งานเกินวันละ 4 ชม. / ควรเปลี่ยนใหม่ภายใน 1 ปี" />
+        </Field>
+      </div>
+      <Field label="รับประกันงานซ่อมถึง"><input type="date" value={rep.warrantyUntil} onChange={set("warrantyUntil")} style={inputStyle} /></Field>
+      <Field label="ลิงก์ใบรายงาน/ใบเสร็จ (ถ้ามี)">
+        <input value={rep.reportUrl} onChange={set("reportUrl")} style={{ ...inputStyle, borderColor: urlOk ? C.line : C.bad }} placeholder="https://drive.google.com/..." />
+      </Field>
+      {onSubmit && (
+        <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(rep)} disabled={!urlOk}>{submitLabel || "บันทึก"}</Btn></div>
+      )}
+    </div>
+  );
+}
+
+function RepairDetail({ r }) {
+  const row = (label, value) => (
+    <div className="py-2" style={{ borderBottom: `1px solid ${C.line}` }}>
+      <div className="text-[11px] font-semibold" style={{ color: C.mute }}>{label}</div>
+      <div className="text-sm whitespace-pre-line" style={{ color: C.ink }}>{value || "-"}</div>
+    </div>
+  );
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-x-4">
+        {row("อุปกรณ์/สถานที่", r.refName)}
+        {row("วันที่ซ่อม", r.date)}
+        {row("ร้าน/ช่าง", r.vendor)}
+        {row("ค่าใช้จ่าย", `${(r.cost || 0).toLocaleString()} บาท`)}
+        {row("ผู้รับผิดชอบ", r.owner)}
+        {row("สถานะ", r.status)}
+      </div>
+      {row("รายละเอียด/อาการที่แจ้งซ่อม", r.description)}
+      <div className="mt-4 p-3" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-sm font-bold" style={{ color: C.navy }}>รายงานผลการซ่อม</div>
+          {r.condition && <Pill fg={conditionTone(r.condition).fg} bg={conditionTone(r.condition).bg}>{r.condition}</Pill>}
+        </div>
+        {row("ผลการซ่อม", r.result)}
+        {row("คำแนะนำเพิ่มเติมจากช่าง", r.recommendation)}
+        {row("รับประกันถึง", r.warrantyUntil)}
+        {r.reportUrl && <a href={r.reportUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold inline-flex items-center gap-1 mt-2" style={{ color: C.navy }}>เปิดใบรายงาน/ใบเสร็จ <ExternalLink size={12} /></a>}
+      </div>
+    </div>
+  );
+}
+
 function RepairForm({ items, staffList, onSubmit }) {
-  const [form, setForm] = useState({ ref: "", refName: "", date: "2026-09-17", description: "", cost: 0, owner: "", vendor: "", receiptUrl: "", status: "เสร็จสิ้น" });
+  const [form, setForm] = useState({ ref: "", refName: "", date: TODAY_STR(), description: "", cost: 0, owner: "", vendor: "", receiptUrl: "" });
+  const [report, setReport] = useState({ status: "เสร็จสิ้น" });
+  const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const pickItem = (e) => { const it = items.find((i) => i.code === e.target.value); setForm((f) => ({ ...f, ref: it?.code || "", refName: it ? `${it.name} (${it.code})` : "" })); };
   const valid = form.refName.trim() && form.date;
+  const submit = async () => {
+    setBusy(true);
+    try { await onSubmit({ ...form, status: report.status, receiptUrl: report.reportUrl || form.receiptUrl, report }); }
+    catch (e) { alert(e.message || "บันทึกไม่สำเร็จ"); }
+    finally { setBusy(false); }
+  };
   return (
-    <div className="grid grid-cols-2 gap-x-4">
-      <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
-        <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
-      </Field>
-      <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
-      <Field label="วันที่ซ่อม"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
-      <Field label="ค่าใช้จ่าย (บาท)"><input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))} style={inputStyle} /></Field>
-      <Field label="ผู้รับผิดชอบ">
-        <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
-      </Field>
-      <Field label="ร้าน/ช่าง"><input value={form.vendor} onChange={set("vendor")} style={inputStyle} /></Field>
-      <div className="col-span-2"><Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
-      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn></div>
+    <div>
+      <div className="grid grid-cols-2 gap-x-4">
+        <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
+          <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
+        </Field>
+        <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
+        <Field label="วันที่ซ่อม"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+        <Field label="ค่าใช้จ่าย (บาท)"><input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))} style={inputStyle} /></Field>
+        <Field label="ผู้รับผิดชอบ">
+          <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+        </Field>
+        <Field label="ร้าน/ช่าง/หน่วยงานภายนอก"><input value={form.vendor} onChange={set("vendor")} style={inputStyle} /></Field>
+        <div className="col-span-2"><Field label="รายละเอียด/อาการที่แจ้งซ่อม"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
+      </div>
+      <div className="mt-2 mb-2 pt-3 text-sm font-bold" style={{ color: C.navy, borderTop: `1px solid ${C.line}` }}>
+        รายงานผลการซ่อมจากหน่วยงานภายนอก <span className="text-xs font-normal" style={{ color: C.mute }}>— กรอกทีหลังได้ ถ้ายังซ่อมไม่เสร็จ</span>
+      </div>
+      <RepairReportFields initial={report} onChange={setReport} />
+      <div className="flex justify-end mt-2"><Btn onClick={submit} disabled={!valid || busy}>{busy ? "กำลังบันทึก..." : "บันทึก"}</Btn></div>
     </div>
   );
 }
@@ -3320,12 +3497,19 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
 
   const filtered = docs.filter((d) => (cat === "ALL" || d.category === cat) && d.title.toLowerCase().includes(q.toLowerCase()));
 
-  const upload = async ({ title, category, file }) => {
+  const upload = async ({ title, category, file, url }) => {
     if (!API_URL) { alert("ยังไม่ได้เชื่อมต่อ Google Sheets backend"); return; }
-    const base64 = await docToBase64(file);
-    const r = await postToSheetsAwait("uploadDoc", { title, category, filename: file.name, mimeType: file.type, base64, uploadedBy: user.name });
-    setDocs((prev) => [{ id: r.id, title, category, url: r.url, uploadedBy: user.name, updatedDate: "2026-09-17", version: "1" }, ...prev]);
-    logAction(`อัปโหลดเอกสาร: ${title}`);
+    let r;
+    if (url) {
+      // วางลิงก์ (Google Drive / Docs / เว็บไซต์) — ไม่ต้องอัปโหลดไฟล์
+      r = await postToSheetsAwait("addDocLink", { title, category, url, uploadedBy: user.name });
+      r = { ...r, url };
+    } else {
+      const base64 = await docToBase64(file);
+      r = await postToSheetsAwait("uploadDoc", { title, category, filename: file.name, mimeType: file.type, base64, uploadedBy: user.name });
+    }
+    setDocs((prev) => [{ id: r.id, title, category, url: r.url, uploadedBy: user.name, updatedDate: new Date().toLocaleDateString("sv-SE"), version: "1" }, ...prev]);
+    logAction(`${url ? "เพิ่มลิงก์เอกสาร" : "อัปโหลดเอกสาร"}: ${title}`);
     setShowNew(false);
   };
   const del = async (d) => {
@@ -3372,7 +3556,7 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
         </div>
       )}
       {showNew && (
-        <Modal title="อัปโหลดเอกสาร" onClose={() => setShowNew(false)}>
+        <Modal title="เพิ่มเอกสาร" onClose={() => setShowNew(false)}>
           <DocUploadForm onSubmit={upload} />
         </Modal>
       )}
@@ -3392,18 +3576,49 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
 function DocUploadForm({ onSubmit }) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState(DOC_CATEGORIES[0]);
+  const [mode, setMode] = useState("file"); // "file" = อัปโหลดไฟล์, "url" = วางลิงก์
   const [file, setFile] = useState(null);
+  const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const submit = async () => { setBusy(true); try { await onSubmit({ title, category, file }); } finally { setBusy(false); } };
+  const urlOk = /^https?:\/\/\S+$/i.test(url.trim());
+  const ready = title.trim() && (mode === "file" ? !!file : urlOk);
+  const submit = async () => {
+    setBusy(true);
+    try { await onSubmit(mode === "file" ? { title, category, file } : { title, category, url: url.trim() }); }
+    catch (e) { alert(e.message || "บันทึกไม่สำเร็จ"); }
+    finally { setBusy(false); }
+  };
+  const tab = (key, label, Icon) => (
+    <button type="button" onClick={() => setMode(key)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold"
+      style={mode === key ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+      <Icon size={13} /> {label}
+    </button>
+  );
   return (
     <div>
       <Field label="ชื่อเอกสาร *"><input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></Field>
       <Field label="หมวดหมู่">
         <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>{DOC_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
       </Field>
-      <Field label="ไฟล์ *"><input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
+      <Field label="ที่มาของเอกสาร *">
+        <div className="flex mb-2" style={{ border: `1px solid ${C.line}` }}>
+          {tab("file", "อัปโหลดไฟล์", Upload)}
+          {tab("url", "วางลิงก์ URL", ExternalLink)}
+        </div>
+        {mode === "file" ? (
+          <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={inputStyle} />
+        ) : (
+          <>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://drive.google.com/... หรือ https://docs.google.com/..."
+              style={{ ...inputStyle, borderColor: url && !urlOk ? C.bad : C.line }} />
+            <div className="text-[11px] mt-1" style={{ color: url && !urlOk ? C.bad : C.mute }}>
+              {url && !urlOk ? "ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://" : "ถ้าเป็นไฟล์ใน Google Drive ให้ตั้งค่าแชร์เป็น \"ทุกคนที่มีลิงก์\" ก่อน"}
+            </div>
+          </>
+        )}
+      </Field>
       <div className="flex justify-end mt-2">
-        <Btn onClick={submit} disabled={!title.trim() || !file || busy}>{busy ? "กำลังอัปโหลด..." : "อัปโหลด"}</Btn>
+        <Btn onClick={submit} disabled={!ready || busy}>{busy ? "กำลังบันทึก..." : mode === "file" ? "อัปโหลด" : "บันทึกลิงก์"}</Btn>
       </div>
     </div>
   );

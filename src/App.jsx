@@ -154,6 +154,42 @@ function fmtTime(v) {
   try { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; } catch { return String(v); }
 }
 
+/* ============================================================
+   ตารางสอนรายครู — ดึงจากชีต "ตารางสอนศูนย์กีฬา" ผ่าน
+   Apps Script action=teachingSchedule (ไฟล์ apps-script/TeachingSchedule.gs)
+   แปลงให้อยู่ในรูปแบบเดียวกับ schedule เดิม เพื่อให้หน้า ตารางสอน /
+   ปฏิทิน / สถานที่ / โปรไฟล์ ใช้ได้ทันที — แถวที่มาจากชีตนี้ไม่มี _row
+   จึงเป็นแบบดูอย่างเดียว (แก้ที่ชีต "ตารางรวมทุกคน")
+   ============================================================ */
+async function loadTeachingSchedule() {
+  const data = await sheetsFetch(`${API_URL}?action=teachingSchedule`);
+  if (!data || !Array.isArray(data.slots)) throw new Error(data?.error || "teachingSchedule not available");
+  const rows = data.slots
+    .filter((s) => s.start && s.end && s.day)
+    .map((s) => ({
+      id: `TS-${s.id}`,
+      day: s.day,
+      start: s.start,
+      end: s.end,
+      period: s.period,
+      subject: s.subject || s.dept || (s.type === "activity" ? "กิจกรรม" : "คาบสอน"),
+      teacher: s.teacher,
+      loc: s.room || "",
+      group: (s.classes || []).join(", "),
+      note: [...(s.notes || []), s.period === "AS" ? "นอกเวลาเรียน" : ""].filter(Boolean).join(" · "),
+      type: s.type,
+      source: "teachingSheet",
+    }));
+  return { rows, warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "" };
+}
+
+// รวมตารางจาก 2 แหล่ง — ถ้าครู/วัน/เวลาเดียวกันมีอยู่แล้ว ให้ใช้แถวเดิม (อาจแก้ไขได้)
+function mergeSchedules(base, extra) {
+  const key = (s) => `${normTeacherName(s.teacher)}|${s.day}|${s.start}|${s.end}`;
+  const seen = new Set(base.map(key));
+  return [...base, ...extra.filter((s) => !seen.has(key(s)))];
+}
+
 async function loadBudgetData(teacherId) {
   const data = await sheetsFetch(`${API_URL}?action=budgetData&teacherId=${encodeURIComponent(teacherId)}`);
   if (!data.ok && data.error && !("budgets" in data)) throw new Error(data.error || "load failed");
@@ -627,6 +663,7 @@ export default function App() {
   const [docs, setDocs] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
+  const [scheduleWarnings, setScheduleWarnings] = useState([]);
 
   // persistence — Google Sheets backend when API_URL is set, else local shared storage
   useEffect(() => {
@@ -641,6 +678,13 @@ export default function App() {
           setOrgEvents(oe || []); setRepairs(rp || []); setPmSchedule(pm || []); setDocs(dc || []);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
+        // ตารางสอนรายครู โหลดแยก ไม่ให้หน้าแรกต้องรอ — ถ้ายังไม่ได้ deploy สคริปต์ก็ข้ามไปเงียบๆ
+        loadTeachingSchedule()
+          .then(({ rows, warnings }) => {
+            setSchedule((prev) => mergeSchedules(prev, rows));
+            setScheduleWarnings(warnings);
+          })
+          .catch(() => {});
         return;
       }
       try {
@@ -764,7 +808,7 @@ export default function App() {
           {tab === "facility" && <Facility items={items} schedule={schedule} pmSchedule={pmSchedule} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
@@ -1831,7 +1875,7 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [] }) {
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -1929,6 +1973,13 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
             {manager && !mine && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มคาบ/มอบหมายงาน</Btn>}
           </div>
         } />
+
+      {manager && warnings.length > 0 && (
+        <div className="p-3 mb-4 text-xs" style={{ background: C.warnBg, color: C.warn, border: `1px solid ${C.line}` }}>
+          <div className="font-bold mb-1 flex items-center gap-1.5"><AlertTriangle size={13} /> ตรวจพบปัญหาในชีตตารางสอน</div>
+          <ul className="list-disc pl-5 space-y-0.5">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
@@ -2138,9 +2189,13 @@ const FULL_DAY_SLOTS = [
   ["15:10", "16:00"],
 ].map(([start, end]) => ({ start, end }));
 
+const AFTER_SCHOOL_SLOT = { start: "16:30", end: "18:00" };
+
 function ScheduleGrid({ rows, onEdit, onDelete }) {
   const dayList = DAYS.slice(0, 6); // จันทร์–เสาร์ เสมอ ไม่ว่าวันนั้นจะมีคาบหรือไม่
-  const slots = FULL_DAY_SLOTS; // 08:10–16:00 เสมอ ไม่ว่าคาบนั้นจะมีข้อมูลหรือไม่
+  // 08:10–16:00 เสมอ + แถว After School (16:30–18:00) เฉพาะเมื่อมีคาบนอกเวลา
+  const slots = rows.some((r) => r.start === AFTER_SCHOOL_SLOT.start && r.end === AFTER_SCHOOL_SLOT.end)
+    ? [...FULL_DAY_SLOTS, AFTER_SCHOOL_SLOT] : FULL_DAY_SLOTS;
 
   return (
     <div className="mb-6 overflow-x-auto" style={{ border: `1px solid ${C.line}`, background: C.white }}>
@@ -2168,6 +2223,7 @@ function ScheduleGrid({ rows, onEdit, onDelete }) {
                       <div className="text-xs font-bold" style={{ color: col.fg }}>{s.subject}</div>
                       {s.loc && <div className="text-[11px] mt-0.5" style={{ color: col.fg }}>{s.loc}</div>}
                       {s.group && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.85 }}>{s.group}</div>}
+                      {s.source === "teachingSheet" && s.note && <div className="text-[10px]" style={{ color: col.fg, opacity: 0.75 }}>{s.note}</div>}
                       {editable ? (
                         <div className="flex gap-2 mt-1.5">
                           <button onClick={() => onEdit(s)} className="text-[11px] underline" style={{ color: col.fg }}>แก้ไข</button>
@@ -3587,7 +3643,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   const myTasks = tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name);
   const myOverdue = myTasks.filter((t) => taskBucket(t) === "overdue").length;
   const myToday = myTasks.filter((t) => taskBucket(t) === "today").length;
-  const myPeriods = schedule.filter((s) => s.teacher === user.name).length;
+  const myPeriods = schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name) && s.period !== "AS").length;
   const myCompleted = myTasks.filter((t) => t.status === "COMPLETED").length;
   const completionPct = myTasks.length ? Math.round((myCompleted / myTasks.length) * 100) : 0;
 

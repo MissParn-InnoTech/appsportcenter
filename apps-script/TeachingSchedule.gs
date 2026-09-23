@@ -217,10 +217,13 @@ function testTeachingSchedule() {
   Logger.log(JSON.stringify(d.slots.slice(0, 3), null, 2));
 }
 
-/* ถ้าโปรเจกต์นี้ยังไม่มี doGet ให้เอาคอมเมนต์ออก
+/* ---------- 4) doGet — ใช้เมื่อ deploy สคริปต์นี้เป็นโปรเจกต์แยก ----------
+   ถ้าจะย้ายไปรวมกับโปรเจกต์ครุภัณฑ์ (Code.gs) ให้ลบฟังก์ชันนี้ออก แล้วเพิ่ม
+   if (e.parameter.action === 'teachingSchedule') return handleTeachingSchedule_(e);
+   ไว้บรรทัดแรกของ doGet เดิมแทน (โปรเจกต์เดียวกันมี doGet ได้แค่ตัวเดียว) */
 function doGet(e) {
-  if (e.parameter.action === 'teachingSchedule') return handleTeachingSchedule_(e);
-  return ContentService.createTextOutput(JSON.stringify({ error: 'unknown action' }))
+  const action = (e && e.parameter && e.parameter.action) || 'teachingSchedule';
+  if (action === 'teachingSchedule') return handleTeachingSchedule_(e);
+  return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'unknown action: ' + action }))
     .setMimeType(ContentService.MimeType.JSON);
 }
-*/

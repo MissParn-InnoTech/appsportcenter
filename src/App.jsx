@@ -174,6 +174,7 @@ async function loadTeachingSchedule() {
       period: s.period,
       subject: s.subject || s.dept || (s.type === "activity" ? "กิจกรรม" : "คาบสอน"),
       teacher: s.teacher,
+      dept: s.dept || "",
       loc: s.room || "",
       group: (s.classes || []).join(", "),
       note: [...(s.notes || []), s.period === "AS" ? "นอกเวลาเรียน" : ""].filter(Boolean).join(" · "),
@@ -1882,16 +1883,21 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   const [conflict, setConflict] = useState(null); // { form, with }
   const [budget, setBudget] = useState({ budgets: [], loaded: false });
   const [editRow, setEditRow] = useState(null); // แถวที่กำลังแก้ไขรายครั้งในมุมมองกริด
-  // หัวหน้า (manager) ก็มีตารางสอนของตัวเองเหมือนกัน — ให้เลือกดูได้ว่าจะดูเฉพาะ
-  // ตารางของตัวเอง (ค่าเริ่มต้น) หรือสลับไปดูตารางรวมทุกคน/มอบหมายงาน
-  const [managerViewMine, setManagerViewMine] = useState(true);
-
+  // สิทธิ์การดู:
+  //  L1/L2 — เห็นเฉพาะตารางสอนของตัวเองเท่านั้น (ไม่มีตารางรวมทุกคน)
+  //  L3 หัวหน้า — สลับได้ระหว่าง "ตารางของฉัน" กับ "ตารางรวมกีฬา"
+  //  L4 ผู้บริหาร — เห็น "ตารางรวมกีฬา" (ดูอย่างเดียว)
   const hasOwnSchedule = user.role === "L1" || user.role === "L2" || manager;
+  const canSeeSport = manager || user.role === "L4";
+  const [managerViewMine, setManagerViewMine] = useState(true);
   const mine = hasOwnSchedule && (!manager || managerViewMine);
   // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
   // ดึงมาจากชีตตารางสอน (เช่น "ม.ชาญวิทย์ พึ่งอิ่ม") อาจสะกดคำนำหน้าไม่ตรงกับชื่อที่
   // login เข้ามา (เช่น "นายชาญวิทย์ พึ่งอิ่ม" จากชีตบุคลากร)
-  const rows = mine ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name)) : schedule;
+  const sportRows = useMemo(() => schedule.filter((s) => !isRoomScheduleRow(s)), [schedule]);
+  const rows = mine
+    ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name))
+    : canSeeSport ? sportRows : [];
 
   // งานอื่นที่หัวหน้ามอบหมาย (ไม่ใช่คาบสอน) — จาก Work Management, กรองเฉพาะที่ assign ให้ฉัน
   const myOtherTasks = useMemo(
@@ -1909,13 +1915,13 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
   const workload = useMemo(() => {
     const m = {};
-    schedule.forEach((s) => {
+    sportRows.forEach((s) => {
       m[s.teacher] = m[s.teacher] || { teacher: s.teacher, periods: 0, hours: 0 };
       m[s.teacher].periods += 1;
       m[s.teacher].hours += durationHrs(s.start, s.end);
     });
     return Object.values(m).sort((a, b) => b.hours - a.hours);
-  }, [schedule]);
+  }, [sportRows]);
 
   const submitSchedule = async (form, force) => {
     try {
@@ -1952,8 +1958,8 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
   return (
     <div>
-      <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางสอน & ภาระงาน"}
-        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบทั้งหมด — มอบหมายงานหรือดูแลห้องเพิ่มเข้าตารางได้ที่นี่`}
+      <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางรวมกีฬา"}
+        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบ — ตารางสอนกีฬาทุกคน (ไม่รวมตารางห้อง/สถานที่)`}
         right={
           <div className="flex items-center gap-2">
             {manager && (
@@ -1966,7 +1972,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
                 <button onClick={() => setManagerViewMine(false)}
                   className="px-3 py-1.5 text-xs font-semibold transition-colors"
                   style={!managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
-                  ตารางรวมทุกคน
+                  ตารางรวมกีฬา
                 </button>
               </div>
             )}
@@ -1983,35 +1989,12 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
-          {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางสอนในระบบ — กด \"เพิ่มคาบ/มอบหมายงาน\" เพื่อเริ่มบันทึก"}
+          {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
         </div>
       ) : mine ? (
         <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : (
-        <div style={{ border: `1px solid ${C.line}`, background: C.white }} className="mb-6">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: C.navy, color: C.white }}>
-                {["วัน", "เวลา", "วิชา/กิจกรรม", "ครูผู้สอน", "สถานที่", "กลุ่ม/ระดับชั้น", ""].map((h) => (
-                  <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((s) => (
-                <tr key={s.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                  <td className="px-3 py-2 text-xs">{s.day}</td>
-                  <td className="px-3 py-2 text-xs font-mono">{s.start}–{s.end}</td>
-                  <td className="px-3 py-2 text-sm font-medium" style={{ color: s.subject === "ดูแลห้อง" ? C.crimson : C.ink }}>{s.subject}</td>
-                  <td className="px-3 py-2 text-xs">{s.teacher}</td>
-                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.loc}</td>
-                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.group}</td>
-                  <td className="px-3 py-2">{manager && s._row && <button onClick={() => setConfirmDel(s)}><X size={14} style={{ color: C.crimson }} /></button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SportScheduleBoard rows={rows} canDelete={manager} onDelete={(s) => setConfirmDel(s)} />
       )}
 
       {mine && (myOtherTasks.length > 0 || budget.budgets.length > 0) && (
@@ -2101,6 +2084,77 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
         <Modal title="แก้ไขคาบสอนครั้งนี้" onClose={() => setEditRow(null)} wide>
           <ScheduleForm staffList={staffList} initial={editRow} submitLabel="บันทึกการแก้ไข" onSubmit={submitEditSchedule} />
         </Modal>
+      )}
+    </div>
+  );
+}
+
+// ตารางของห้อง/สถานที่ (ไม่ใช่ครู) และงานดูแลห้อง — ไม่นำมารวมใน "ตารางรวมกีฬา"
+const ROOM_SCHEDULE_RE = /^(ห้อง|สนาม|สระ|ศูนย์|จัดเก็บ|คลัง|ลาน|อาคาร|โรงยิม|อารีน่า|ยิม)/;
+function isRoomScheduleRow(s) {
+  const who = normTeacherName(s.teacher);
+  return ROOM_SCHEDULE_RE.test(who) || /ดูแลห้อง|จัดเก็บ/.test(s.subject || "");
+}
+
+// ตารางรวมกีฬา — เลือกวัน แล้วแสดงทุกคาบของวันนั้น เรียงตามเวลา (อ่านง่ายบนมือถือ)
+function SportScheduleBoard({ rows, canDelete, onDelete }) {
+  const dayList = DAYS.slice(0, 6);
+  const todayName = DAYS[(new Date().getDay() + 6) % 7];
+  const [day, setDay] = useState(dayList.includes(todayName) ? todayName : dayList[0]);
+  const [sport, setSport] = useState("");
+  const sports = useMemo(
+    () => [...new Set(rows.map((r) => r.dept || r.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "th")),
+    [rows]
+  );
+  const dayRows = rows.filter((r) => r.day === day && (!sport || (r.dept || r.subject) === sport));
+  const bySlot = {};
+  dayRows.forEach((r) => { const k = `${r.start}–${r.end}`; (bySlot[k] = bySlot[k] || []).push(r); });
+  const slotKeys = Object.keys(bySlot).sort();
+  const countOf = (d) => rows.filter((r) => r.day === d && (!sport || (r.dept || r.subject) === sport)).length;
+
+  return (
+    <div className="mb-6">
+      <div className="flex gap-1.5 mb-3 overflow-x-auto">
+        {dayList.map((d) => (
+          <button key={d} onClick={() => setDay(d)} className="px-3 py-1.5 text-xs font-semibold shrink-0"
+            style={d === day ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate, border: `1px solid ${C.line}` }}>
+            {d} <span style={{ opacity: 0.7 }}>({countOf(d)})</span>
+          </button>
+        ))}
+      </div>
+      {sports.length > 1 && (
+        <select value={sport} onChange={(e) => setSport(e.target.value)} className="mb-3" style={inputStyle}>
+          <option value="">ทุกกีฬา/หน่วยงาน</option>
+          {sports.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+      )}
+      {slotKeys.length === 0 ? (
+        <div className="p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่มีคาบในวัน{day}</div>
+      ) : (
+        <div className="space-y-3">
+          {slotKeys.map((k) => (
+            <div key={k} style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="px-3 py-1.5 text-xs font-semibold font-mono" style={{ background: C.paper, color: C.slate, borderBottom: `1px solid ${C.line}` }}>
+                {k}{bySlot[k][0].period === "AS" ? " · After School" : ""}
+              </div>
+              <div className="p-2 space-y-1.5">
+                {bySlot[k].map((r) => {
+                  const col = scheduleCardColor(r.dept || r.subject);
+                  return (
+                    <div key={r.id} className="px-2.5 py-1.5 flex items-start justify-between gap-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate" style={{ color: col.fg }}>{r.dept && r.dept !== r.subject ? `${r.dept} · ${r.subject}` : r.subject}</div>
+                        <div className="text-[11px]" style={{ color: col.fg }}>{r.teacher}{r.loc ? ` · ${r.loc}` : ""}</div>
+                        {r.group && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.8 }}>{r.group}</div>}
+                      </div>
+                      {canDelete && r._row && <button onClick={() => onDelete(r)} className="shrink-0"><X size={14} style={{ color: C.crimson }} /></button>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -2966,7 +3020,6 @@ function TaskDetailModal({ t, user, manager, readOnly, staffList, onClose, patch
 const DAY_TO_WEEKDAY = { "อาทิตย์": 0, "จันทร์": 1, "อังคาร": 2, "พุธ": 3, "พฤหัสบดี": 4, "ศุกร์": 5, "เสาร์": 6 };
 const CAL_LAYERS = [
   { key: "tasks", label: "งานของฉัน (My Tasks)", color: C.crimson },
-  { key: "schedule", label: "ตารางใช้สนาม/ศูนย์กีฬา", color: C.navy },
   { key: "org", label: "กิจกรรมฝ่ายกิจกรรม/องค์กร", color: "#B8860B" },
   { key: "pm", label: "นัดซ่อมบำรุงล่วงหน้า", color: "#C2660D" },
 ];
@@ -2982,7 +3035,7 @@ function combineDate(dateStr, timeStr) {
   return dt;
 }
 
-function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly, userName }) {
+function buildCalendarEvents({ tasks, orgEvents, pmSchedule, mineOnly, userName }) {
   const events = [];
   const myTasks = mineOnly ? tasks.filter((t) => t.assignee === userName || t.createdBy === userName) : tasks;
   myTasks.forEach((t) => {
@@ -2993,21 +3046,7 @@ function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly,
     events.push({ id: `T-${t.id}`, title: `📋 ${t.title}`, start, end, allDay: !t.dueTime, layer: "tasks", raw: t });
   });
 
-  // schedule repeats weekly — project onto -1..+6 weeks from today for a usable calendar window
-  const base = new Date(); // วันนี้จริง
-  const monday = new Date(base); monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
-  for (let w = -1; w <= 6; w++) {
-    schedule.forEach((s) => {
-      const wd = DAY_TO_WEEKDAY[s.day];
-      if (wd === undefined) return;
-      const d = new Date(monday); d.setDate(monday.getDate() + w * 7 + ((wd + 6) % 7));
-      const start = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.start);
-      const end = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.end);
-      if (!start) return;
-      // ปฏิทินกลางใส่แค่ชื่อกีฬา/ห้อง พอ ไม่ต้องพ่วงชื่อครูหรือรายละเอียดอื่น (ยาวเกินไป)
-      events.push({ id: `S-${s.id}-${w}`, title: `🏟️ ${s.subject || s.loc || "-"}`, start, end: end || start, allDay: false, layer: "schedule", raw: s });
-    });
-  }
+  // ปฏิทินกลางไม่แสดงตารางห้อง/ตารางสอน — ดูได้ที่เมนู "ตารางสอน" แทน
 
   orgEvents.forEach((e) => {
     const start = combineDate(e.start);
@@ -3026,7 +3065,7 @@ function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly,
 }
 
 function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEvents, setTab, logAction }) {
-  const [visible, setVisible] = useState({ tasks: true, schedule: true, org: true, pm: true });
+  const [visible, setVisible] = useState({ tasks: true, org: true, pm: true });
   const [view, setView] = useState("month");
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -3034,8 +3073,8 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
   const manager = canManage(user.role);
 
   const allEvents = useMemo(
-    () => buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly, userName: user.name }),
-    [tasks, schedule, orgEvents, pmSchedule, mineOnly, user.name]
+    () => buildCalendarEvents({ tasks, orgEvents, pmSchedule, mineOnly, userName: user.name }),
+    [tasks, orgEvents, pmSchedule, mineOnly, user.name]
   );
   const events = allEvents.filter((e) => visible[e.layer]);
 
@@ -3048,7 +3087,7 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
 
   return (
     <div>
-      <SectionHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว ตารางใช้สนาม กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว"
+      <SectionHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว (ตารางสอนดูที่เมนูตารางสอน)"
         right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มกิจกรรมองค์กร</Btn>} />
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         {CAL_LAYERS.map((l) => (
@@ -3084,7 +3123,6 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
                 <button onClick={() => setTab("tasks")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้างาน →</button>
               </>
             )}
-            {selected.layer === "schedule" && (<><div>สถานที่: {selected.raw.loc}</div><div>กลุ่ม/ระดับชั้น: {selected.raw.group || "-"}</div></>)}
             {selected.layer === "org" && (<><div>หน่วยงาน: {selected.raw.dept}</div><div>สถานที่: {selected.raw.loc || "-"}</div><div>{selected.raw.description}</div></>)}
             {selected.layer === "pm" && (<><div>รอบซ่อม: {selected.raw.cycle}</div><div>ผู้รับผิดชอบ: {selected.raw.owner || "-"}</div><button onClick={() => setTab("maintenance")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้าซ่อมบำรุง →</button></>)}
           </div>

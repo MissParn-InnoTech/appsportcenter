@@ -1058,7 +1058,7 @@ export default function App() {
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} repairs={repairs} pmSchedule={pmSchedule} docs={docs} schedule={allSchedule} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} setTab={setTab} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-          {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} repairs={repairs} damages={damages} tasks={tasks} setTab={setTab} />}
+          {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} repairs={repairs} damages={damages} tasks={tasks} borrows={borrows} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} schedule={allSchedule} tasks={tasks} setStaffList={setStaffList} user={user} logAction={logAction} setTab={setTab} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
           {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} />}
@@ -1942,6 +1942,8 @@ const FACILITY_ZONES = [
   { key: "arena", name: "อารีน่า", rooms: ["ARENA"] },
 ];
 const OTHER_ZONE = { key: "other", name: "สถานที่อื่นๆ (ยังไม่จัดกลุ่ม)" };
+// ชั่วโมงที่ห้องเปิดให้ใช้ต่อสัปดาห์ (ใช้คำนวณอัตราการใช้ห้อง) — 8 ชม. × 5 วัน
+const ROOM_OPEN_HOURS_PER_WEEK = 40;
 
 // ตัวอักษรมาตรฐานของหน้าสถานที่ — ขนาดเดียวกันทุกระดับ
 const FT = {
@@ -1951,6 +1953,19 @@ const FT = {
   meta: { fontSize: 12, color: C.slate },
   num: { fontSize: 24, fontWeight: 700, lineHeight: 1.1 },
 };
+
+// สุขภาพครุภัณฑ์ของห้อง = ชิ้นพร้อมใช้ / ชิ้นทั้งหมด
+function roomHealth(l) {
+  const total = (l.ok || 0) + (l.damaged || 0) + (l.lost || 0);
+  if (!total) return { pct: null, label: "ไม่มีครุภัณฑ์", fg: C.mute, bg: C.paper, bar: C.line };
+  const pct = Math.round(((l.ok || 0) / total) * 100);
+  if (pct >= 90) return { pct, label: "สภาพดี", fg: C.ok, bg: C.okBg, bar: C.ok };
+  if (pct >= 70) return { pct, label: "เฝ้าระวัง", fg: C.warn, bg: C.warnBg, bar: C.warn };
+  return { pct, label: "ต้องดูแลด่วน", fg: C.bad, bg: C.badBg, bar: C.bad };
+}
+function roomUtil(l) {
+  return Math.min(100, Math.round(((l.hoursPerWeek || 0) / ROOM_OPEN_HOURS_PER_WEEK) * 100));
+}
 
 function FacStat({ label, value, color = C.ink, sub }) {
   return (
@@ -1962,9 +1977,22 @@ function FacStat({ label, value, color = C.ink, sub }) {
   );
 }
 
+function FacMeter({ label, pct, color, right }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1" style={FT.meta}>
+        <span>{label}</span><span style={{ fontWeight: 600, color: C.ink }}>{right ?? (pct === null ? "–" : `${pct}%`)}</span>
+      </div>
+      <div className="h-1.5 w-full" style={{ background: C.line }}>
+        <div className="h-1.5" style={{ width: `${pct || 0}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
 function Crumbs({ parts }) {
   return (
-    <div className="flex items-center flex-wrap gap-1 mb-3" style={FT.meta}>
+    <div className="flex items-center flex-wrap gap-1 mb-3 no-print" style={FT.meta}>
       {parts.map((p, i) => (
         <React.Fragment key={i}>
           {i > 0 && <ChevronRight size={12} style={{ color: C.mute }} />}
@@ -1987,11 +2015,62 @@ function RoomStatusPill({ loc }) {
   );
 }
 
-function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages = [], tasks = [], setTab }) {
+function FilterChip({ on, onClick, children, count }) {
+  return (
+    <button onClick={onClick} className="px-3 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
+      style={{ fontSize: 12.5, fontWeight: 600, background: on ? C.ink : C.white, color: on ? C.white : C.navySoft, border: `1px solid ${on ? C.ink : C.line}` }}>
+      {children}{count !== undefined && <span style={{ fontSize: 11, opacity: 0.7 }}>{count}</span>}
+    </button>
+  );
+}
+
+function RoomCard({ l, onOpen, zoneName }) {
+  const Ico = pickFacilityIcon(l.name);
+  const h = roomHealth(l);
+  const u = roomUtil(l);
+  return (
+    <button onClick={onOpen} className="p-4 text-left transition-shadow hover:shadow-md flex flex-col"
+      style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.current ? C.crimson : h.bar}` }}>
+      <div className="flex items-start justify-between gap-2 mb-1 w-full">
+        <div className="flex items-center gap-2 min-w-0">
+          <Ico size={16} strokeWidth={1.5} className="shrink-0" style={{ color: C.navy }} />
+          <span className="truncate" style={FT.title}>{l.name}</span>
+        </div>
+        <span className="shrink-0 whitespace-nowrap"><RoomStatusPill loc={l} /></span>
+      </div>
+      <div className="mb-3" style={FT.meta}>{zoneName ? `${zoneName} · ` : ""}ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
+      <div className="mb-3 px-2.5 py-1.5" style={{ ...FT.meta, background: l.current ? C.badBg : C.paper, color: l.current ? C.crimsonDeep : C.slate }}>
+        {l.current ? `ตอนนี้: ${l.current.subject || "ใช้งาน"} · ${l.current.start}–${l.current.end}`
+          : l.next ? `คาบถัดไป ${l.next.start} · ${l.next.subject || "-"}` : "ไม่มีคาบใช้งานต่อจากนี้ในวันนี้"}
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{l.count}</div></div>
+        <div><div style={FT.label}>พร้อมใช้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{l.ok.toLocaleString()}</div></div>
+        <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: l.damaged ? C.crimson : C.ink }}>{l.damaged}</div></div>
+      </div>
+      <div className="space-y-2 mb-3">
+        <FacMeter label="สภาพครุภัณฑ์" pct={h.pct} color={h.bar} />
+        <FacMeter label="อัตราการใช้ห้อง" pct={u} color={C.navy} right={`${u}% · ${l.periodsPerWeek || 0} คาบ/สัปดาห์`} />
+      </div>
+      <div className="mt-auto flex items-center justify-between pt-2 w-full" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
+        <span className="flex items-center gap-1.5" style={{ color: l.nextMaintenance ? (l.nextMaintenance.nextDate < TODAY_ISO ? C.crimson : C.warn) : C.mute }}>
+          <Wrench size={12} />{l.nextMaintenance ? `${l.nextMaintenance.nextDate < TODAY_ISO ? "เลยนัดซ่อมบำรุง" : "ซ่อมบำรุงถัดไป"} ${l.nextMaintenance.nextDate}` : "ยังไม่มีนัดซ่อมบำรุง"}
+        </span>
+        <span className="flex items-center gap-0.5" style={{ color: C.navy, fontWeight: 600 }}>ดูห้อง <ChevronRight size={13} /></span>
+      </div>
+    </button>
+  );
+}
+
+function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages = [], tasks = [], borrows = [], setTab }) {
   const [zoneKey, setZoneKey] = useState(null);
   const [roomName, setRoomName] = useState(null);
   const [detailTab, setDetailTab] = useState("items");
   const [itemQ, setItemQ] = useState("");
+  const [itemCat, setItemCat] = useState("ALL");
+  const [itemState, setItemState] = useState("ALL");
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("ALL");
   const topRef = useRef(null);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -2010,7 +2089,6 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
       if (!m[i.loc]) m[i.loc] = { name: i.loc, owner: i.owner, count: 0, ok: 0, damaged: 0, lost: 0 };
       m[i.loc].count += 1; m[i.loc].ok += i.normal; m[i.loc].damaged += i.damaged; m[i.loc].lost += i.lost || 0;
     });
-
     Object.values(m).forEach((loc) => {
       const todaysRows = schedule.filter((s) => s.loc === loc.name && s.day === nowDay);
       loc.current = todaysRows.find((s) => {
@@ -2020,15 +2098,12 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
       loc.next = todaysRows
         .filter((s) => { const start = toMinutes_(s.start); return start !== null && start > nowMin; })
         .sort((a, b) => toMinutes_(a.start) - toMinutes_(b.start))[0] || null;
-      loc.todayRows = [...todaysRows].sort((a, b) => (toMinutes_(a.start) ?? 0) - (toMinutes_(b.start) ?? 0));
       const weeklyRows = schedule.filter((s) => s.loc === loc.name);
       loc.periodsPerWeek = weeklyRows.length;
       loc.hoursPerWeek = weeklyRows.reduce((sum, s) => sum + durationHrs(s.start, s.end), 0);
-      const upcoming = pmSchedule
-        .filter((p) => p.refName && p.refName.includes(loc.name) && p.nextDate)
-        .sort((a, b) => (a.nextDate < b.nextDate ? -1 : 1))
-        .find((p) => p.nextDate >= TODAY_ISO) || pmSchedule.find((p) => p.refName && p.refName.includes(loc.name));
-      loc.nextMaintenance = upcoming || null;
+      const pmRows = pmSchedule.filter((p) => p.refName && p.refName.includes(loc.name) && p.nextDate).sort((a, b) => (a.nextDate < b.nextDate ? -1 : 1));
+      loc.nextMaintenance = pmRows.find((p) => p.nextDate >= TODAY_ISO) || pmRows[pmRows.length - 1] || null;
+      loc.pmOverdue = pmRows.some((p) => p.nextDate < TODAY_ISO) && !pmRows.some((p) => p.nextDate >= TODAY_ISO);
     });
     return m;
   }, [items, schedule, pmSchedule, nowDay, nowMin]);
@@ -2049,35 +2124,71 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
       count: z.rooms.reduce((s, r) => s + r.count, 0),
       ok: z.rooms.reduce((s, r) => s + r.ok, 0),
       damaged: z.rooms.reduce((s, r) => s + r.damaged, 0),
+      lost: z.rooms.reduce((s, r) => s + r.lost, 0),
       inUse: z.rooms.filter((r) => r.current).length,
+      attention: z.rooms.filter((r) => { const h = roomHealth(r); return h.pct !== null && h.pct < 90; }).length,
       periods: z.rooms.reduce((s, r) => s + (r.periodsPerWeek || 0), 0),
     }));
   }, [byLoc]);
 
+  const zoneOf = (name) => zones.find((z) => z.rooms.some((r) => r.name === name));
   const zone = zones.find((z) => z.key === zoneKey) || null;
   const room = roomName ? byLoc[roomName] : null;
   const goAll = () => { setZoneKey(null); setRoomName(null); };
   const goZone = (k) => { setZoneKey(k); setRoomName(null); };
-  const openRoom = (name) => { setRoomName(name); setDetailTab("items"); setItemQ(""); };
+  const openRoom = (name) => { setRoomName(name); setDetailTab("items"); setItemQ(""); setItemCat("ALL"); setItemState("ALL"); };
 
-  const totalRooms = Object.keys(byLoc).length;
-  const totalInUse = Object.values(byLoc).filter((l) => l.current).length;
-  const maxPeriods = Math.max(1, ...Object.values(byLoc).map((l) => l.periodsPerWeek || 0));
+  const allRooms = Object.values(byLoc);
+  const totalInUse = allRooms.filter((l) => l.current).length;
+  const needCare = allRooms.filter((l) => { const h = roomHealth(l); return h.pct !== null && h.pct < 90; });
+  const withPm = allRooms.filter((l) => l.nextMaintenance);
+  const FILTERS = [
+    ["ALL", "ทั้งหมด", allRooms.length, () => true],
+    ["INUSE", "กำลังใช้งาน", totalInUse, (l) => l.current],
+    ["CARE", "ต้องดูแลครุภัณฑ์", needCare.length, (l) => { const h = roomHealth(l); return h.pct !== null && h.pct < 90; }],
+    ["PM", "มีนัดซ่อมบำรุง", withPm.length, (l) => l.nextMaintenance],
+    ["IDLE", "ไม่มีตารางใช้งาน", allRooms.filter((l) => !l.periodsPerWeek).length, (l) => !l.periodsPerWeek],
+  ];
+  const printCss = <style>{`@media print { .desktop-sidebar, header, nav, .no-print { display: none !important; } main { padding: 0 !important; overflow: visible !important; } .table-scroll { overflow: visible !important; } }`}</style>;
 
   /* ---------- ระดับ 3: รายละเอียดห้อง ---------- */
   if (room) {
     const roomItems = items.filter((it) => it.loc === room.name);
     const codes = new Set(roomItems.map((it) => it.code));
-    const q = itemQ.trim().toLowerCase();
-    const shownItems = roomItems.filter((it) => !q || `${it.code} ${it.name} ${it.brand || ""}`.toLowerCase().includes(q));
+    const cats = Array.from(new Set(roomItems.map((it) => it.catCode))).filter(Boolean);
+    const iq = itemQ.trim().toLowerCase();
+    const shownItems = roomItems
+      .filter((it) => itemCat === "ALL" || it.catCode === itemCat)
+      .filter((it) => itemState === "ALL" || (itemState === "DMG" ? it.damaged > 0 || (it.lost || 0) > 0 : it.damaged === 0 && !(it.lost || 0)))
+      .filter((it) => !iq || `${it.code} ${it.name} ${it.brand || ""}`.toLowerCase().includes(iq))
+      .sort((a, b) => (b.damaged - a.damaged) || String(a.code).localeCompare(String(b.code)));
     const damagedItems = roomItems.filter((it) => it.damaged > 0);
     const openDamages = damages.filter((d) => (d.location === room.name || codes.has(d.itemCode)) && !/เสร็จ|ซ่อมแล้ว|ปิด|จำหน่าย/.test(d.status || ""));
     const roomTasks = tasks.filter((t) => (t.location === room.name || t.relatedFacility === room.name || t.relatedFacility === room.code) && t.status !== "COMPLETED" && t.status !== "CANCELLED");
     const roomRepairs = repairs.filter((r) => r.refName?.includes(room.name) || (room.code && r.ref === room.code) || codes.has(r.ref)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const roomPm = pmSchedule.filter((p) => p.refName?.includes(room.name) || (room.code && p.ref === room.code) || codes.has(p.ref)).sort((a, b) => String(a.nextDate).localeCompare(String(b.nextDate)));
+    const repairCost = roomRepairs.reduce((s, r) => s + (r.cost || 0), 0);
+    const roomBorrows = borrows.filter((b) => b.where === room.name || codes.has(b.itemCode)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const openBorrows = roomBorrows.filter((b) => b.status === "borrowed");
+    const weekRows = schedule.filter((s) => s.loc === room.name).sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day) || String(a.start).localeCompare(String(b.start)));
+    const byDay = DAYS.map((d) => ({ day: d, rows: weekRows.filter((r) => r.day === d) }));
+    const busiest = byDay.reduce((best, d) => (d.rows.length > (best?.rows.length || 0) ? d : best), null);
+    const teachers = Array.from(new Set(weekRows.map((r) => r.teacher).filter(Boolean)));
     const maintCount = damagedItems.length + openDamages.length + roomTasks.length + roomPm.length;
     const Ico = pickFacilityIcon(room.name);
-    const roomZone = zones.find((z) => z.rooms.some((r) => r.name === room.name));
+    const roomZone = zoneOf(room.name);
+    const h = roomHealth(room);
+    const u = roomUtil(room);
+    const totals = shownItems.reduce((s, it) => ({ n: s.n + it.normal, d: s.d + it.damaged, l: s.l + (it.lost || 0) }), { n: 0, d: 0, l: 0 });
+
+    const exportRoom = () => {
+      const rows = roomItems.map((it) => ({ รหัส: it.code, รายการ: it.name, "ยี่ห้อ/รุ่น": it.brand || "", หมวด: catName(it.catCode), พร้อมใช้: it.normal, ชำรุด: it.damaged, สูญหาย: it.lost || 0, หมายเหตุ: it.note || "" }));
+      if (!rows.length) return;
+      const blob = new Blob(["﻿" + toCsv(rows)], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = `ครุภัณฑ์_${room.name}_${TODAY_ISO}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    };
 
     const Block = ({ title, count, empty, children }) => (
       <div className="mb-5">
@@ -2094,45 +2205,56 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
         {right && <div className="shrink-0">{right}</div>}
       </div>
     );
+    const TABS = [["items", "ครุภัณฑ์ของห้อง", room.count], ["schedule", "ตารางใช้ห้อง", weekRows.length], ["maintenance", "ซ่อมบำรุง", maintCount], ["borrow", "ประวัติยืม–คืน", roomBorrows.length]];
 
     return (
       <div ref={topRef}>
+        {printCss}
         <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, roomZone && { label: roomZone.name, onClick: () => goZone(roomZone.key) }, { label: room.name }].filter(Boolean)} />
-        <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+        <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderTop: `3px solid ${room.current ? C.crimson : h.bar}` }}>
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-12 h-12 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
                 <Ico size={22} strokeWidth={1.5} style={{ color: C.navy }} />
               </div>
               <div className="min-w-0">
-                <div style={FT.label}>{room.code || "ROOM"}</div>
+                <div style={FT.label}>{room.code || "ROOM"}{roomZone ? ` · ${roomZone.name}` : ""}</div>
                 <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{room.name}</h1>
-                <div style={FT.meta}>ผู้ดูแล: {room.owner || "ยังไม่ระบุ"}</div>
+                <div className="flex items-center gap-2 flex-wrap mt-0.5" style={FT.meta}>
+                  <span>ผู้ดูแล: {room.owner || "ยังไม่ระบุ"}</span>
+                  <RoomStatusPill loc={room} />
+                  <Pill fg={h.fg} bg={h.bg}>{h.label}{h.pct !== null ? ` ${h.pct}%` : ""}</Pill>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <RoomStatusPill loc={room} />
+            <div className="flex items-center gap-2 flex-wrap no-print">
+              {setTab && <Btn small variant="ghost" icon={AlertTriangle} onClick={() => setTab("damage")}>แจ้งชำรุด</Btn>}
+              {setTab && <Btn small variant="ghost" icon={ArrowLeftRight} onClick={() => setTab("borrow")}>ยืมอุปกรณ์</Btn>}
+              <Btn small variant="ghost" icon={Download} onClick={exportRoom} disabled={!roomItems.length}>ส่งออก CSV</Btn>
+              <Btn small variant="ghost" icon={FileText} onClick={() => window.print()}>พิมพ์</Btn>
               <Btn small variant="ghost" onClick={() => setRoomName(null)}>← กลับไปเลือกห้อง</Btn>
             </div>
           </div>
           <div className="mt-3 pt-3" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
             {room.current
-              ? <span style={{ color: C.crimsonDeep }}>ตอนนี้: {room.current.subject || "ใช้งาน"} · {room.current.teacher || "-"} · {room.current.start}–{room.current.end}</span>
+              ? <span style={{ color: C.crimsonDeep, fontWeight: 600 }}>ตอนนี้: {room.current.subject || "ใช้งาน"} · {room.current.teacher || "-"} · {room.current.start}–{room.current.end}{room.current.group ? ` · ${room.current.group}` : ""}</span>
               : room.next ? <span>คาบถัดไปวันนี้: {room.next.start}–{room.next.end} · {room.next.subject || "-"} · {room.next.teacher || "-"}</span>
               : <span>ไม่มีคาบใช้งานต่อจากนี้ในวันนี้</span>}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
           <FacStat label="รายการครุภัณฑ์" value={room.count.toLocaleString()} sub={`${(room.ok + room.damaged + room.lost).toLocaleString()} ชิ้น`} />
-          <FacStat label="พร้อมใช้" value={room.ok.toLocaleString()} color={C.ok} sub="ชิ้น" />
+          <FacStat label="สภาพครุภัณฑ์" value={h.pct === null ? "–" : `${h.pct}%`} color={h.fg} sub={`พร้อมใช้ ${room.ok.toLocaleString()} ชิ้น`} />
           <FacStat label="ชำรุด / สูญหาย" value={`${room.damaged} / ${room.lost}`} color={room.damaged ? C.crimson : C.ink} sub="ชิ้น" />
-          <FacStat label="การใช้ห้อง" value={room.periodsPerWeek || 0} sub={`คาบ/สัปดาห์ · ${room.hoursPerWeek.toFixed(1)} ชม.`} />
+          <FacStat label="อัตราการใช้ห้อง" value={`${u}%`} sub={`${room.hoursPerWeek.toFixed(1)} จาก ${ROOM_OPEN_HOURS_PER_WEEK} ชม./สัปดาห์`} />
+          <FacStat label="กำลังถูกยืม" value={openBorrows.length} color={openBorrows.length ? C.warn : C.ink} sub="รายการที่ยังไม่คืน" />
+          <FacStat label="ค่าซ่อมสะสม" value={repairCost.toLocaleString()} sub={`บาท · ${roomRepairs.length} ครั้ง`} />
         </div>
 
-        <div className="flex mb-4" style={{ borderBottom: `1px solid ${C.line}` }}>
-          {[["items", "ครุภัณฑ์ของห้อง", room.count], ["maintenance", "ซ่อมบำรุง", maintCount]].map(([key, label, n]) => (
-            <button key={key} className="px-4 py-2.5 flex items-center gap-2" onClick={() => setDetailTab(key)}
+        <div className="flex mb-4 overflow-x-auto no-print" style={{ borderBottom: `1px solid ${C.line}` }}>
+          {TABS.map(([key, label, n]) => (
+            <button key={key} className="px-4 py-2.5 flex items-center gap-2 whitespace-nowrap" onClick={() => setDetailTab(key)}
               style={{ fontSize: 14, fontWeight: 600, color: detailTab === key ? C.crimson : C.slate, borderBottom: detailTab === key ? `2px solid ${C.crimson}` : "2px solid transparent", marginBottom: -1 }}>
               {label}
               <span className="px-1.5" style={{ fontSize: 11, background: detailTab === key ? C.badBg : C.paper, color: detailTab === key ? C.crimson : C.slate, border: `1px solid ${C.line}` }}>{n}</span>
@@ -2140,41 +2262,108 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
           ))}
         </div>
 
-        {detailTab === "items" ? (
+        {detailTab === "items" && (
           <div>
-            <div className="relative max-w-sm mb-3">
-              <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
-              <input value={itemQ} onChange={(e) => setItemQ(e.target.value)} placeholder="ค้นหารหัส ชื่อ หรือยี่ห้อ..." style={{ ...inputStyle, paddingLeft: 32 }} />
+            <div className="flex items-center gap-2 flex-wrap mb-3 no-print">
+              <div className="relative" style={{ width: 260 }}>
+                <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+                <input value={itemQ} onChange={(e) => setItemQ(e.target.value)} placeholder="ค้นหารหัส ชื่อ หรือยี่ห้อ..." style={{ ...inputStyle, paddingLeft: 32 }} />
+              </div>
+              <FilterChip on={itemState === "ALL"} onClick={() => setItemState("ALL")}>ทุกสภาพ</FilterChip>
+              <FilterChip on={itemState === "OK"} onClick={() => setItemState("OK")}>ปกติทั้งหมด</FilterChip>
+              <FilterChip on={itemState === "DMG"} onClick={() => setItemState("DMG")} count={roomItems.filter((it) => it.damaged > 0 || (it.lost || 0) > 0).length}>มีชำรุด/สูญหาย</FilterChip>
+              {cats.length > 1 && (
+                <select value={itemCat} onChange={(e) => setItemCat(e.target.value)} style={{ ...inputStyle, width: 200 }}>
+                  <option value="ALL">ทุกหมวด ({cats.length})</option>
+                  {cats.map((c) => <option key={c} value={c}>{catName(c)}</option>)}
+                </select>
+              )}
             </div>
             {shownItems.length ? (
               <div className="table-scroll" style={{ background: C.white, border: `1px solid ${C.line}` }}>
                 <table className="w-full" style={FT.body}>
-                  <thead><tr style={{ background: C.paper }}>{["รหัส", "รายการ", "ยี่ห้อ/รุ่น", "พร้อมใช้", "ชำรุด", "สูญหาย", "สถานะ"].map((h, i) => <th key={h} className={`px-3 py-2 ${i >= 3 && i <= 5 ? "text-right" : "text-left"}`} style={FT.label}>{h}</th>)}</tr></thead>
+                  <thead><tr style={{ background: C.ink }}>{["รหัส", "รายการ", "หมวด", "ยี่ห้อ/รุ่น", "พร้อมใช้", "ชำรุด", "สูญหาย", "สภาพ"].map((hd, i) => <th key={hd} className={`px-3 py-2.5 whitespace-nowrap ${i >= 4 && i <= 6 ? "text-right" : "text-left"}`} style={{ fontSize: 11.5, fontWeight: 600, color: C.white }}>{hd}</th>)}</tr></thead>
                   <tbody>
-                    {shownItems.map((it) => {
-                      const st = it.damaged > 0 && it.damaged >= it.normal ? ["ต้องซ่อมด่วน", C.bad, C.badBg] : it.damaged > 0 ? ["มีชำรุดบางส่วน", C.warn, C.warnBg] : ["ปกติ", C.ok, C.okBg];
+                    {shownItems.map((it, idx) => {
+                      const tot = it.normal + it.damaged + (it.lost || 0);
+                      const st = !tot ? ["ไม่มียอด", C.slate, C.paper] : it.damaged > 0 && it.damaged >= it.normal ? ["ต้องซ่อมด่วน", C.bad, C.badBg] : it.damaged > 0 || (it.lost || 0) > 0 ? ["ชำรุดบางส่วน", C.warn, C.warnBg] : ["ปกติ", C.ok, C.okBg];
                       return (
-                        <tr key={it.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                          <td className="px-3 py-2 font-mono" style={FT.meta}>{it.code}</td>
-                          <td className="px-3 py-2">{it.name}{it.note ? <div style={{ ...FT.meta, color: C.mute }}>{it.note}</div> : null}</td>
-                          <td className="px-3 py-2" style={FT.meta}>{it.brand || "-"}</td>
-                          <td className="px-3 py-2 text-right font-semibold" style={{ color: C.ok }}>{it.normal}</td>
-                          <td className="px-3 py-2 text-right font-semibold" style={{ color: it.damaged ? C.crimson : C.mute }}>{it.damaged}</td>
-                          <td className="px-3 py-2 text-right font-semibold" style={{ color: it.lost ? C.warn : C.mute }}>{it.lost || 0}</td>
-                          <td className="px-3 py-2"><Pill fg={st[1]} bg={st[2]}>{st[0]}</Pill></td>
+                        <tr key={it.id} style={{ borderTop: `1px solid ${C.line}`, background: idx % 2 ? C.paper : C.white }}>
+                          <td className="px-3 py-2 font-mono whitespace-nowrap" style={FT.meta}>{it.code}</td>
+                          <td className="px-3 py-2" style={{ minWidth: 200 }}>{it.name}{it.note ? <div style={{ ...FT.meta, color: C.mute }}>{it.note}</div> : null}</td>
+                          <td className="px-3 py-2 whitespace-nowrap" style={FT.meta}>{catName(it.catCode)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap" style={FT.meta}>{it.brand || "-"}</td>
+                          <td className="px-3 py-2 text-right font-semibold" style={{ color: it.normal ? C.ok : C.mute, fontVariantNumeric: "tabular-nums" }}>{it.normal}</td>
+                          <td className="px-3 py-2 text-right font-semibold" style={{ color: it.damaged ? C.crimson : C.mute, fontVariantNumeric: "tabular-nums" }}>{it.damaged}</td>
+                          <td className="px-3 py-2 text-right font-semibold" style={{ color: it.lost ? C.warn : C.mute, fontVariantNumeric: "tabular-nums" }}>{it.lost || 0}</td>
+                          <td className="px-3 py-2 whitespace-nowrap"><Pill fg={st[1]} bg={st[2]}>{st[0]}</Pill></td>
                         </tr>
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: `2px solid ${C.ink}`, background: C.white }}>
+                      <td className="px-3 py-2.5" colSpan={4} style={{ ...FT.body, fontWeight: 700 }}>รวม {shownItems.length} รายการ</td>
+                      <td className="px-3 py-2.5 text-right" style={{ fontWeight: 700, color: C.ok }}>{totals.n.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right" style={{ fontWeight: 700, color: totals.d ? C.crimson : C.ink }}>{totals.d.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right" style={{ fontWeight: 700, color: totals.l ? C.warn : C.ink }}>{totals.l.toLocaleString()}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             ) : (
               <div className="py-10 text-center" style={{ ...FT.body, color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
-                {roomItems.length ? "ไม่พบรายการที่ตรงกับคำค้นหา" : "ยังไม่มีครุภัณฑ์ที่ระบุห้องนี้ — เพิ่มได้ที่หน้าครุภัณฑ์"}
+                {roomItems.length ? "ไม่พบรายการที่ตรงกับตัวกรอง" : "ยังไม่มีครุภัณฑ์ที่ระบุห้องนี้ — เพิ่มได้ที่หน้าครุภัณฑ์"}
               </div>
             )}
           </div>
-        ) : (
+        )}
+
+        {detailTab === "schedule" && (
+          <div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <FacStat label="คาบต่อสัปดาห์" value={weekRows.length} />
+              <FacStat label="ชั่วโมงต่อสัปดาห์" value={room.hoursPerWeek.toFixed(1)} sub={`อัตราการใช้ ${u}%`} />
+              <FacStat label="วันที่ใช้มากที่สุด" value={busiest ? busiest.day : "–"} sub={busiest ? `${busiest.rows.length} คาบ` : "ยังไม่มีตาราง"} />
+              <FacStat label="ครูที่ใช้ห้อง" value={teachers.length} sub={teachers.slice(0, 2).join(", ") || "-"} />
+            </div>
+            {weekRows.length === 0 ? (
+              <div className="py-10 text-center" style={{ ...FT.body, color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีตารางใช้ห้องนี้ในระบบ</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {byDay.filter((d) => d.rows.length).map(({ day, rows }) => {
+                  const isToday = day === nowDay;
+                  const dc = dayColor(day);
+                  return (
+                    <div key={day} style={{ background: C.white, border: `1px solid ${isToday ? C.ink : C.line}` }}>
+                      <div className="px-3 py-2 flex items-center justify-between" style={{ background: dc.bg, borderBottom: `1px solid ${C.line}` }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: dc.fg }}>{day}{isToday ? " · วันนี้" : ""}</span>
+                        <span style={{ fontSize: 12, color: dc.fg }}>{rows.length} คาบ</span>
+                      </div>
+                      <div className="divide-y" style={{ borderColor: C.line }}>
+                        {rows.map((r) => {
+                          const live = isToday && room.current && room.current.id === r.id;
+                          return (
+                            <div key={r.id} className="px-3 py-2 flex items-start gap-3" style={{ background: live ? C.badBg : C.white }}>
+                              <span className="font-mono shrink-0" style={{ fontSize: 12, fontWeight: 600, color: C.ink, width: 88 }}>{r.start}–{r.end}</span>
+                              <div className="min-w-0">
+                                <div className="truncate" style={{ ...FT.body, fontWeight: 600 }}>{r.subject || "-"}{live && <span style={{ color: C.crimson }}> · กำลังใช้</span>}</div>
+                                <div className="truncate" style={FT.meta}>{r.teacher || "-"}{r.group ? ` · ${r.group}` : ""}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {detailTab === "maintenance" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-5">
             <div>
               <Block title="อุปกรณ์ชำรุดในห้องนี้" count={damagedItems.length} empty="ไม่มีอุปกรณ์ชำรุด">
@@ -2184,19 +2373,46 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
                 {openDamages.map((d) => <Row key={d.id} tone={C.warn} left={d.itemName} sub={`${d.date} · แจ้งโดย ${d.reporter || "-"}${d.symptom ? ` · ${d.symptom}` : ""}`} right={<Pill fg={C.warn} bg={C.warnBg}>{d.status}</Pill>} />)}
               </Block>
               <Block title="งานที่เกี่ยวกับห้องนี้" count={roomTasks.length} empty="ไม่มีงานค้างของห้องนี้">
-                {roomTasks.map((t) => { const s = STATUS_META[t.status] || STATUS_META.TODO; return <Row key={t.id} tone={C.navy} left={t.title} sub={`${t.assignee || "ยังไม่ระบุผู้รับผิดชอบ"}${t.dueDate ? ` · กำหนด ${t.dueDate}` : ""}`} right={<Pill fg={s.fg} bg={s.bg}>{s.label}</Pill>} />; })}
+                {roomTasks.map((t) => { const s = STATUS_META[taskBucket(t) === "overdue" ? "OVERDUE" : t.status] || STATUS_META.TODO; return <Row key={t.id} tone={C.navy} left={t.title} sub={`${t.assignee || "ยังไม่ระบุผู้รับผิดชอบ"}${t.dueDate ? ` · กำหนด ${t.dueDate}` : ""}`} right={<Pill fg={s.fg} bg={s.bg}>{s.label}</Pill>} />; })}
               </Block>
             </div>
             <div>
               <Block title="แผนซ่อมบำรุง (PM)" count={roomPm.length} empty="ยังไม่มีแผนซ่อมบำรุงของห้องนี้">
-                {roomPm.map((p) => <Row key={p.id} tone={p.nextDate && p.nextDate < TODAY_ISO ? C.crimson : C.ok} left={`${p.refName || room.name} · ${p.cycle || "ตรวจบำรุง"}`} sub={`ผู้รับผิดชอบ: ${p.owner || "ยังไม่ระบุ"}${p.note ? ` · ${p.note}` : ""}`} right={<span style={{ ...FT.meta, fontWeight: 700, color: p.nextDate && p.nextDate < TODAY_ISO ? C.crimson : C.ink }}>{p.nextDate || "-"}</span>} />)}
+                {roomPm.map((p) => { const late = p.nextDate && p.nextDate < TODAY_ISO; return <Row key={p.id} tone={late ? C.crimson : C.ok} left={`${p.refName || room.name} · ${p.cycle || "ตรวจบำรุง"}`} sub={`ผู้รับผิดชอบ: ${p.owner || "ยังไม่ระบุ"}${p.note ? ` · ${p.note}` : ""}`} right={<div className="text-right"><div style={{ ...FT.meta, fontWeight: 700, color: late ? C.crimson : C.ink }}>{p.nextDate || "-"}</div>{late && <div style={{ fontSize: 11, color: C.crimson }}>เลยกำหนด</div>}</div>} />; })}
               </Block>
-              <Block title="ประวัติการซ่อม" count={roomRepairs.length} empty="ยังไม่มีประวัติการซ่อม">
-                {roomRepairs.map((r) => <Row key={r.id} left={r.description || r.refName} sub={`${r.date || "-"} · ${r.vendor || "ไม่ระบุช่าง"} · ${r.cost.toLocaleString()} บาท`} right={<Pill fg={C.slate} bg={C.paper}>{r.status || "ไม่ระบุ"}</Pill>} />)}
+              <Block title={`ประวัติการซ่อม${repairCost ? ` · รวม ${repairCost.toLocaleString()} บาท` : ""}`} count={roomRepairs.length} empty="ยังไม่มีประวัติการซ่อม">
+                {roomRepairs.map((r) => <Row key={r.id} left={r.description || r.refName} sub={`${r.date || "-"} · ${r.vendor || "ไม่ระบุช่าง"} · ${r.cost.toLocaleString()} บาท${r.recommendation ? ` · คำแนะนำ: ${r.recommendation}` : ""}`} right={<Pill fg={C.slate} bg={C.paper}>{r.status || "ไม่ระบุ"}</Pill>} />)}
               </Block>
-              {setTab && <Btn small variant="ghost" icon={Wrench} onClick={() => setTab("maintenance")}>เปิดหน้าซ่อมบำรุงทั้งหมด</Btn>}
+              {setTab && <div className="no-print"><Btn small variant="ghost" icon={Wrench} onClick={() => setTab("maintenance")}>เปิดหน้าซ่อมบำรุงทั้งหมด</Btn></div>}
             </div>
           </div>
+        )}
+
+        {detailTab === "borrow" && (
+          roomBorrows.length ? (
+            <div className="table-scroll" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <table className="w-full" style={FT.body}>
+                <thead><tr style={{ background: C.ink }}>{["วันที่ยืม", "อุปกรณ์", "จำนวน", "ผู้ยืม", "ใช้ที่", "กำหนดคืน", "สถานะ"].map((hd, i) => <th key={hd} className={`px-3 py-2.5 whitespace-nowrap ${i === 2 ? "text-right" : "text-left"}`} style={{ fontSize: 11.5, fontWeight: 600, color: C.white }}>{hd}</th>)}</tr></thead>
+                <tbody>
+                  {roomBorrows.map((b, idx) => {
+                    const late = b.status === "borrowed" && b.due && b.due < TODAY_ISO;
+                    const st = b.status === "returned" ? ["คืนแล้ว", C.ok, C.okBg] : late ? ["เกินกำหนด", C.bad, C.badBg] : ["ยังไม่คืน", C.warn, C.warnBg];
+                    return (
+                      <tr key={b.id} style={{ borderTop: `1px solid ${C.line}`, background: idx % 2 ? C.paper : C.white }}>
+                        <td className="px-3 py-2 whitespace-nowrap" style={FT.meta}>{b.date}</td>
+                        <td className="px-3 py-2" style={{ minWidth: 200 }}>{b.itemName}<div style={{ ...FT.meta, color: C.mute }}>{b.itemCode}</div></td>
+                        <td className="px-3 py-2 text-right font-semibold">{b.qty}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{b.borrower}</td>
+                        <td className="px-3 py-2 whitespace-nowrap" style={FT.meta}>{b.where || "-"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap" style={{ ...FT.meta, color: late ? C.crimson : C.slate, fontWeight: late ? 700 : 400 }}>{b.due || "-"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap"><Pill fg={st[1]} bg={st[2]}>{st[0]}</Pill></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : <div className="py-10 text-center" style={{ ...FT.body, color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีประวัติการยืมอุปกรณ์ของห้องนี้</div>
         )}
       </div>
     );
@@ -2204,86 +2420,96 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
 
   /* ---------- ระดับ 2: ห้องในสถานที่ ---------- */
   if (zone) {
+    const zh = roomHealth(zone);
     return (
       <div ref={topRef}>
         <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, { label: zone.name }]} />
-        <SectionHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์และงานซ่อมบำรุง`}
+        <SectionHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์ ตารางใช้ห้อง และงานซ่อมบำรุง`}
           right={<Btn variant="ghost" onClick={goAll}>← สถานที่ทั้งหมด</Btn>} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <FacStat label="ห้อง/สนาม" value={zone.rooms.length} sub={`ใช้งานอยู่ ${zone.inUse} ห้อง`} color={zone.inUse ? C.crimson : C.ink} />
+          <FacStat label="สภาพครุภัณฑ์รวม" value={zh.pct === null ? "–" : `${zh.pct}%`} color={zh.fg} sub={zh.label} />
+          <FacStat label="ชิ้นชำรุด / สูญหาย" value={`${zone.damaged} / ${zone.lost}`} color={zone.damaged ? C.crimson : C.ink} sub={`ห้องที่ต้องดูแล ${zone.attention} ห้อง`} />
+          <FacStat label="คาบใช้งานรวม" value={zone.periods} sub="คาบ/สัปดาห์" />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {zone.rooms.map((l) => {
-            const Ico = pickFacilityIcon(l.name);
-            const utilPct = Math.round(((l.periodsPerWeek || 0) / maxPeriods) * 100);
-            const bad = l.damaged > l.ok * 0.3 && l.ok > 0;
-            return (
-              <button key={l.name} onClick={() => openRoom(l.name)} className="p-4 text-left transition-shadow hover:shadow-md"
-                style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.current ? C.gold : bad ? C.crimson : C.ok}` }}>
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Ico size={16} strokeWidth={1.5} className="shrink-0" style={{ color: C.navy }} />
-                    <span className="truncate" style={FT.title}>{l.name}</span>
-                  </div>
-                  <RoomStatusPill loc={l} />
-                </div>
-                <div className="mb-3" style={FT.meta}>ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{l.count}</div></div>
-                  <div><div style={FT.label}>ใช้ได้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{l.ok}</div></div>
-                  <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: l.damaged ? C.crimson : C.ink }}>{l.damaged}</div></div>
-                </div>
-                <div className="flex items-center justify-between mb-1" style={FT.meta}>
-                  <span>การใช้งาน</span><span>{l.periodsPerWeek || 0} คาบ/สัปดาห์</span>
-                </div>
-                <div className="h-1.5 w-full mb-3" style={{ background: C.line }}><div className="h-1.5" style={{ width: `${utilPct}%`, background: C.navy }} /></div>
-                <div className="flex items-center justify-between pt-2" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
-                  <span className="flex items-center gap-1.5" style={{ color: l.nextMaintenance ? C.warn : C.mute }}>
-                    <Wrench size={12} />{l.nextMaintenance ? `ซ่อมบำรุงถัดไป ${l.nextMaintenance.nextDate}` : "ยังไม่มีนัดซ่อมบำรุง"}
-                  </span>
-                  <span className="flex items-center gap-0.5" style={{ color: C.navy, fontWeight: 600 }}>ดูห้อง <ChevronRight size={13} /></span>
-                </div>
-              </button>
-            );
-          })}
+          {zone.rooms.map((l) => <RoomCard key={l.name} l={l} onOpen={() => openRoom(l.name)} />)}
         </div>
       </div>
     );
   }
 
   /* ---------- ระดับ 1: สถานที่ทั้งหมด ---------- */
+  const searching = q.trim() || filter !== "ALL";
+  const fn = FILTERS.find((f) => f[0] === filter)[3];
+  const qq = q.trim().toLowerCase();
+  const results = allRooms.filter(fn).filter((l) => !qq || `${l.name} ${l.code || ""} ${l.owner || ""}`.toLowerCase().includes(qq));
+  const totDamaged = zones.reduce((s, z) => s + z.damaged, 0);
+  const overall = roomHealth({ ok: zones.reduce((s, z) => s + z.ok, 0), damaged: totDamaged, lost: zones.reduce((s, z) => s + z.lost, 0) });
+  const avgUtil = allRooms.length ? Math.round(allRooms.reduce((s, l) => s + roomUtil(l), 0) / allRooms.length) : 0;
+
   return (
     <div ref={topRef}>
-      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกสถานที่ → เลือกห้อง → ดูครุภัณฑ์และงานซ่อมบำรุงของห้อง" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <FacStat label="สถานที่" value={zones.length} sub="กลุ่ม" />
-        <FacStat label="ห้อง/สนาม" value={totalRooms} sub="ทั้งหมด" />
+      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกสถานที่ → เลือกห้อง → ดูครุภัณฑ์ ตารางใช้ห้อง งานซ่อมบำรุง และประวัติยืม–คืน" />
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-5">
+        <FacStat label="ห้อง/สนามทั้งหมด" value={allRooms.length} sub={`ใน ${zones.length} กลุ่มสถานที่`} />
         <FacStat label="กำลังใช้งานตอนนี้" value={totalInUse} color={totalInUse ? C.crimson : C.ink} sub={`${nowDay} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} น.`} />
-        <FacStat label="ชิ้นที่ชำรุด" value={zones.reduce((s, z) => s + z.damaged, 0).toLocaleString()} color={C.crimson} sub="รวมทุกห้อง" />
+        <FacStat label="สภาพครุภัณฑ์รวม" value={overall.pct === null ? "–" : `${overall.pct}%`} color={overall.fg} sub={`ชำรุด ${totDamaged.toLocaleString()} ชิ้น`} />
+        <FacStat label="ห้องที่ต้องดูแล" value={needCare.length} color={needCare.length ? C.warn : C.ink} sub="สภาพครุภัณฑ์ต่ำกว่า 90%" />
+        <FacStat label="อัตราการใช้ห้องเฉลี่ย" value={`${avgUtil}%`} sub={`จาก ${ROOM_OPEN_HOURS_PER_WEEK} ชม./สัปดาห์`} />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {zones.map((z) => {
-          const Ico = z.rooms[0] ? pickFacilityIcon(z.rooms[0].name) : Landmark;
-          return (
-            <button key={z.key} onClick={() => goZone(z.key)} className="p-5 text-left transition-shadow hover:shadow-md" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}><Ico size={18} strokeWidth={1.5} style={{ color: C.navy }} /></div>
-                  <div className="min-w-0"><div className="truncate" style={FT.title}>{z.name}</div><div style={FT.meta}>{z.rooms.length} ห้อง/สนาม</div></div>
+
+      <div className="flex items-center gap-2 flex-wrap mb-4">
+        <div className="relative" style={{ width: 280 }}>
+          <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาห้อง รหัส หรือผู้ดูแล..." style={{ ...inputStyle, paddingLeft: 32 }} />
+        </div>
+        {FILTERS.map(([k, label, n]) => <FilterChip key={k} on={filter === k} onClick={() => setFilter(k)} count={n}>{label}</FilterChip>)}
+        {searching && <button onClick={() => { setQ(""); setFilter("ALL"); }} className="hover:underline" style={{ ...FT.meta, color: C.navy, fontWeight: 600 }}>ล้างตัวกรอง</button>}
+      </div>
+
+      {searching ? (
+        results.length ? (
+          <>
+            <div className="mb-2" style={FT.meta}>พบ {results.length} ห้อง</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {results.map((l) => <RoomCard key={l.name} l={l} zoneName={zoneOf(l.name)?.name} onOpen={() => { setZoneKey(zoneOf(l.name)?.key || null); openRoom(l.name); }} />)}
+            </div>
+          </>
+        ) : <div className="py-10 text-center" style={{ ...FT.body, color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่พบห้องที่ตรงกับเงื่อนไข</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {zones.map((z) => {
+            const Ico = z.rooms[0] ? pickFacilityIcon(z.rooms[0].name) : Landmark;
+            const zh = roomHealth(z);
+            return (
+              <button key={z.key} onClick={() => goZone(z.key)} className="p-5 text-left transition-shadow hover:shadow-md flex flex-col" style={{ background: C.white, border: `1px solid ${C.line}`, borderTop: `3px solid ${zh.bar}` }}>
+                <div className="flex items-start justify-between gap-2 mb-3 w-full">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}><Ico size={18} strokeWidth={1.5} style={{ color: C.navy }} /></div>
+                    <div className="min-w-0"><div className="truncate" style={FT.title}>{z.name}</div><div style={FT.meta}>{z.rooms.length} ห้อง/สนาม</div></div>
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap">{z.inUse > 0 ? <Pill fg={C.crimsonDeep} bg={C.badBg}>ใช้งาน {z.inUse}</Pill> : <Pill fg={C.ok} bg={C.okBg}>ว่างทั้งหมด</Pill>}</span>
                 </div>
-                <span className="shrink-0 whitespace-nowrap">{z.inUse > 0 ? <Pill fg={C.crimsonDeep} bg={C.badBg}>ใช้งาน {z.inUse}</Pill> : <Pill fg={C.ok} bg={C.okBg}>ว่างทั้งหมด</Pill>}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{z.count}</div></div>
-                <div><div style={FT.label}>ใช้ได้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{z.ok.toLocaleString()}</div></div>
-                <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: z.damaged ? C.crimson : C.ink }}>{z.damaged}</div></div>
-              </div>
-              <div className="flex flex-wrap gap-1 mb-3">
-                {z.rooms.slice(0, 5).map((r) => <span key={r.name} className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11, background: C.paper, border: `1px solid ${C.line}` }}>{r.name}</span>)}
-                {z.rooms.length > 5 && <span className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11 }}>+{z.rooms.length - 5}</span>}
-              </div>
-              <div className="flex items-center justify-end" style={{ ...FT.meta, color: C.navy, fontWeight: 600 }}>ดูห้องทั้งหมด <ChevronRight size={13} /></div>
-            </button>
-          );
-        })}
-      </div>
+                <div className="grid grid-cols-3 gap-2 mb-3 w-full">
+                  <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{z.count}</div></div>
+                  <div><div style={FT.label}>พร้อมใช้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{z.ok.toLocaleString()}</div></div>
+                  <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: z.damaged ? C.crimson : C.ink }}>{z.damaged}</div></div>
+                </div>
+                <div className="mb-3 w-full"><FacMeter label="สภาพครุภัณฑ์" pct={zh.pct} color={zh.bar} /></div>
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {z.rooms.slice(0, 5).map((r) => <span key={r.name} className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11, background: C.paper, border: `1px solid ${C.line}` }}>{r.name}</span>)}
+                  {z.rooms.length > 5 && <span className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11 }}>+{z.rooms.length - 5}</span>}
+                </div>
+                <div className="mt-auto flex items-center justify-between w-full pt-2" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
+                  <span style={{ color: z.attention ? C.warn : C.mute }}>{z.attention ? `ต้องดูแล ${z.attention} ห้อง` : "ทุกห้องสภาพดี"}</span>
+                  <span className="flex items-center gap-0.5" style={{ color: C.navy, fontWeight: 600 }}>ดูห้องทั้งหมด <ChevronRight size={13} /></span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

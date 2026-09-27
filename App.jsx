@@ -826,11 +826,11 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 @@ -1236,18 +1236,18 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
          }} />
  
+         
          {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
--        <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full">
--          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" style={{ transform: "scale(0.95)", transformOrigin: "left bottom" }} />
-+        <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full items-start">
-+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" style={{ transform: "scale(0.95)", transformOrigin: "left top" }} />
+         <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full">
+-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" />
++          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" style={{ transform: "scale(0.9)", transformOrigin: "left bottom" }} />
          </div>
 
         {/* login column */}

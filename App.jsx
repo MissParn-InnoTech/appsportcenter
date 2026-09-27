@@ -818,20 +818,28 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
       </header>
 
      {/* hero — mascot left, login card right on desktop; stacked on mobile */}
--      <div className="flex-1 relative flex flex-col min-[1080px]:flex-row overflow-y-auto overflow-x-hidden" style={{
-+      <div className="flex-1 min-h-0 relative flex flex-col min-[1080px]:flex-row overflow-y-auto overflow-x-hidden" style={{
-         background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
-       }}>
-         <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
-@@ -1236,18 +1236,18 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
-         }} />
- 
-         
-         {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
-         <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full">
--          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" />
-+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" style={{ transform: "scale(1.0)", transformOrigin: "left bottom" }} />
-         </div>
+      <div className="flex-1 relative flex flex-col md:flex-row overflow-y-auto overflow-x-hidden" style={{
+        background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
+      }}>
+        <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
+          backgroundImage: "repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 3px)",
+        }} />
+        <div className="absolute inset-0 pointer-events-none" style={{
+          background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
+        }} />
+
+        {/* mobile: full-bleed background photo with a black→red filter overlay, per the reference */}
+        <div className="md:hidden absolute inset-0 z-0" style={{
+          backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.15) 0%, rgba(130,15,25,0.15) 45%, rgba(8,3,3,0.75) 100%), url("${MOBILE_BG_URL}")`,
+          backgroundSize: "cover",
+          backgroundPosition: "center top",
+          backgroundRepeat: "no-repeat",
+        }} />
+
+        {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
+        <div className="hidden md:flex relative shrink-0 overflow-hidden md:w-[48%] md:h-full">
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-bottom" />
+        </div>
 
         {/* login column */}
         <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 md:px-14 py-5 md:pt-16 md:pb-10">

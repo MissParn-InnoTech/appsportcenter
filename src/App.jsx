@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import "@fontsource/teko/700.css";
 import { applyLang, getLang } from "./i18n.js";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { th } from "date-fns/locale/th";
@@ -1236,12 +1237,12 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
         <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full">
-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" />
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" style={{ transform: "scale(0.9)", transformOrigin: "left bottom" }} />
         </div>
 
         {/* login column */}
         <div className="relative z-10 flex-1 flex flex-col justify-center px-5 sm:px-6 min-[1080px]:px-14 py-5 min-[1080px]:pt-16 min-[1080px]:pb-10">
-          <h1 className="text-4xl min-[1080px]:text-6xl tracking-tight min-[1080px]:whitespace-nowrap mb-6 min-[1080px]:mb-10 shrink-0 text-center min-[1080px]:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
+          <h1 className="text-5xl min-[1080px]:text-7xl min-[1080px]:whitespace-nowrap mb-6 min-[1080px]:mb-10 shrink-0 text-center min-[1080px]:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.45)", fontFamily: "'Teko', 'Anton', sans-serif", fontWeight: 700, letterSpacing: "0.02em", lineHeight: 0.95, transform: "skewX(-9deg)", transformOrigin: "left center" }}>
             <span style={{ color: C.onDark }}>ACT</span> SPORT CENTER
           </h1>
           <div className="flex items-center justify-center min-[1080px]:justify-start">

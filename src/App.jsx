@@ -687,24 +687,63 @@ const STAT_CARD_TONES = { navy: C.navy, ok: C.ok, crimson: C.crimson, gold: C.wa
 const StatCard = ({ icon: Icon, label, value, color, tone, sub, onClick }) => {
   const accent = color || STAT_CARD_TONES[tone] || C.navy;
   return (
-    <div 
+    <div
       onClick={onClick}
-      className={`bg-white rounded-lg shadow-sm p-6 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-      style={{ borderColor: accent }}
+      className={`bg-white px-4 py-3.5 ${onClick ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+      style={{ border: `1px solid ${C.line}`, borderLeft: `3px solid ${accent}` }}
     >
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Icon size={32} style={{ color: accent }} />
-          <div>
-            <p className="text-sm text-gray-600">{label}</p>
-            <p className="text-2xl font-bold text-gray-900">{value}</p>
-            {sub && <p className="text-xs mt-1 text-gray-500">{sub}</p>}
+      <div className="flex items-start gap-3">
+        {Icon && (
+          <div className="w-8 h-8 shrink-0 flex items-center justify-center mt-0.5" style={{ background: `${accent}12` }}>
+            <Icon size={16} strokeWidth={1.75} style={{ color: accent }} />
           </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate" style={{ fontSize: 12, color: C.slate }} title={label}>{label}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2, color: C.ink, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+          {sub && <div className="truncate mt-0.5" style={{ fontSize: 11.5, color: C.mute }} title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
         </div>
       </div>
     </div>
   );
 };
+
+// ป้ายแกน x แนวนอน — ตัดคำภาษาไทยขึ้นบรรทัดใหม่ได้สูงสุด 2 บรรทัด ให้พอดีความกว้างของแต่ละแท่ง
+const _tickCanvas = typeof document !== "undefined" ? document.createElement("canvas").getContext("2d") : null;
+function wrapLabel(text, maxW, font = `11px ${FONT}`, maxLines = 2) {
+  const str = String(text ?? "");
+  if (!_tickCanvas) return [str];
+  _tickCanvas.font = font;
+  const w = (t) => _tickCanvas.measureText(t).width;
+  const words = typeof Intl !== "undefined" && Intl.Segmenter
+    ? Array.from(new Intl.Segmenter("th", { granularity: "word" }).segment(str), (x) => x.segment)
+    : Array.from(str);
+  const lines = [];
+  let cur = "";
+  for (const wd of words) {
+    if (!cur || w(cur + wd) <= maxW) { cur += wd; continue; }
+    lines.push(cur.trim()); cur = wd.trimStart();
+  }
+  if (cur) lines.push(cur.trim());
+  if (lines.length > maxLines) {
+    let last = lines.slice(maxLines - 1).join("");
+    while (last.length > 1 && w(last + "…") > maxW) last = last.slice(0, -1);
+    return [...lines.slice(0, maxLines - 1), last + "…"];
+  }
+  return lines;
+}
+function WrapTick({ x, y, payload, width, visibleTicksCount }) {
+  const per = Math.max(40, (width || 300) / Math.max(1, visibleTicksCount || 1) - 6);
+  const lines = wrapLabel(payload.value, per);
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <title>{payload.value}</title>
+      <text textAnchor="middle" fontSize={11} fontFamily={FONT} fill={C.slate}>
+        {lines.map((ln, i) => <tspan key={i} x={0} dy={i === 0 ? 12 : 13}>{ln}</tspan>)}
+      </text>
+    </g>
+  );
+}
 
 function Modal({ title, onClose, children, wide }) {
   return (
@@ -1494,11 +1533,11 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-          <h3 className="text-sm font-bold mb-1" style={{ color: C.navy }}>สุขภาพครุภัณฑ์โดยรวม</h3>
-          <div className="text-xs mb-2" style={{ color: C.mute }}>สัดส่วนสุขภาพครุภัณฑ์โดยรวม</div>
-          <ResponsiveContainer width="100%" height={220}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>สุขภาพครุภัณฑ์โดยรวม</h3>
+          <div className="mb-2" style={{ fontSize: 12, color: C.mute }}>สัดส่วนชิ้นที่ปกติ ชำรุด และกำลังถูกยืม</div>
+          <ResponsiveContainer width="100%" height={240}>
             <PieChart width={400} height={300}>
-              <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" nameKey="name">
+              <Pie data={pieData} cx="50%" cy="46%" innerRadius={52} outerRadius={82} paddingAngle={1} dataKey="value" nameKey="name" stroke={C.white}>
                 {pieData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
               </Pie>
               <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} />
@@ -1507,18 +1546,17 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
           </ResponsiveContainer>
         </div>
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold" style={{ color: C.navy }}>สุขภาพทรัพยากรแยกตามหมวด (Top 8 ชำรุดสูงสุด)</h3>
-          </div>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>สุขภาพทรัพยากรแยกตามหมวด</h3>
+          <div className="mb-2" style={{ fontSize: 12, color: C.mute }}>8 หมวดที่มีของชำรุดมากที่สุด (ชิ้น)</div>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart width={400} height={300} data={byCat}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
-              <XAxis dataKey="cat" interval={0} angle={-30} textAnchor="end" height={78} tickMargin={4} tick={{ fontSize: 11, fontFamily: FONT, fill: C.slate }} axisLine={{ stroke: C.line }} tickLine={false} />
+              <XAxis dataKey="cat" interval={0} height={40} tick={<WrapTick />} axisLine={{ stroke: C.line }} tickLine={false} />
               <YAxis width={40} tick={{ fontSize: 11, fontFamily: FONT, fill: C.slate }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} />
               <Legend verticalAlign="top" align="right" iconSize={10} wrapperStyle={{ fontSize: 12, fontFamily: FONT, paddingBottom: 8 }} />
-              <Bar dataKey="ok" name="ปกติ" fill={C.ok} />
-              <Bar dataKey="damaged" name="ชำรุด" fill={C.crimson} />
+              <Bar dataKey="ok" name="ปกติ" fill={C.ok} maxBarSize={22} radius={[2, 2, 0, 0]} />
+              <Bar dataKey="damaged" name="ชำรุด" fill={C.crimson} maxBarSize={22} radius={[2, 2, 0, 0]} />
 </BarChart>
           </ResponsiveContainer>
         </div>
@@ -3550,7 +3588,7 @@ function AnaCard({ title, children, right, span2 }) {
   return (
     <div className={`p-4 ${span2 ? "col-span-2" : ""}`} style={{ background: C.white, border: `1px solid ${C.line}` }}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold" style={{ color: C.navy }}>{title}</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{title}</h3>
         {right}
       </div>
       {children}
@@ -3670,29 +3708,61 @@ function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffL
     <div>
       <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ข้อมูลศูนย์กีฬา" sub="สรุปจากทุกชีต: ครุภัณฑ์ · บุคลากร · ตารางสอน · งาน · ยืม-คืน · ซ่อม · งบประมาณ" />
 
-      <div className="grid grid-cols-2 gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-        <StatCard label="มูลค่าครุภัณฑ์ (ที่มีราคา)" value={baht(A.value)} sub={`${items.length} รายการ · ${A.totalUnits.toLocaleString()} ชิ้น`} icon={Package} />
-        <StatCard label="พร้อมใช้งาน" value={`${readyPct}%`} sub={`ชำรุด ${A.units.damaged} · สูญหาย ${A.units.lost}`} tone={readyPct >= 90 ? "navy" : "crimson"} icon={ShieldCheck} />
-        <StatCard label="บุคลากรในระบบ" value={staffList.length} sub={Object.entries(A.byLevel).sort().map(([k, v]) => `${k}:${v}`).join(" · ")} icon={Users} />
-        <StatCard label="คาบกีฬา/สัปดาห์" value={combinedSport.length} sub={`${A.classesPerWeek} ห้องเรียน-คาบ · ${sportList.length} กีฬา`} icon={Trophy} />
-        <StatCard label="งานค้าง" value={A.openTasks.length} sub={`เกินกำหนด ${A.overdueTasks.length} · สำเร็จ ${A.doneRate}%`} tone={A.overdueTasks.length ? "crimson" : "navy"} icon={ClipboardList} />
-        <StatCard label="งบประมาณที่ใช้" value={budgetRows.length ? `${Math.round(budgetRows.reduce((s, b) => s + b.used, 0) / Math.max(1, budgetRows.reduce((s, b) => s + b.amount, 0)) * 100)}%` : "–"} sub={budgetRows.length ? `${baht(budgetRows.reduce((s, b) => s + b.used, 0))} / ${baht(budgetRows.reduce((s, b) => s + b.amount, 0))}` : budget.loaded ? "ไม่มีข้อมูล" : "กำลังโหลด…"} icon={DollarSign} />
-      </div>
-
-      <AnaCard title={`สิ่งที่ต้องจัดการ (${actions.length})`}>
-        {actions.length === 0 ? <div className="text-sm" style={{ color: C.ok }}>ไม่มีเรื่องค้าง 🎉</div> : (
-          <div className="space-y-1.5">
-            {actions.map((a, i) => (
-              <button key={i} onClick={() => setTab && setTab(a.tab)} className="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2"
-                style={{ background: toneStyle[a.tone].bg, color: toneStyle[a.tone].fg }}>
-                <span>{a.tone === "bad" ? "⛔" : a.tone === "warn" ? "⚠️" : "ℹ️"} {a.text}</span><ChevronRight size={14} className="shrink-0" />
-              </button>
+      {(() => {
+        const bu = budgetRows.reduce((s, b) => s + b.used, 0), ba = budgetRows.reduce((s, b) => s + b.amount, 0);
+        const kpis = [
+          { label: "มูลค่าครุภัณฑ์", value: baht(A.value), sub: `${items.length} รายการ · ${A.totalUnits.toLocaleString()} ชิ้น` },
+          { label: "พร้อมใช้งาน", value: `${readyPct}%`, sub: `ชำรุด ${A.units.damaged} · สูญหาย ${A.units.lost}`, color: readyPct >= 90 ? C.ok : readyPct >= 70 ? C.warn : C.crimson },
+          { label: "บุคลากรในระบบ", value: staffList.length, sub: Object.entries(A.byLevel).sort().map(([k, v]) => `${k}:${v}`).join(" · ") },
+          { label: "คาบกีฬา/สัปดาห์", value: combinedSport.length, sub: `${sportList.length} กีฬา · ${A.classesPerWeek} ห้อง-คาบ` },
+          { label: "งานค้าง", value: A.openTasks.length, sub: `เกินกำหนด ${A.overdueTasks.length} · สำเร็จ ${A.doneRate}%`, color: A.overdueTasks.length ? C.crimson : C.ink },
+          { label: "งบประมาณที่ใช้", value: budgetRows.length ? `${Math.round((bu / Math.max(1, ba)) * 100)}%` : "–", sub: budgetRows.length ? `${baht(bu)} / ${baht(ba)}` : budget.loaded ? "ไม่มีข้อมูล" : "กำลังโหลด…" },
+        ];
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            {kpis.map((k, i) => (
+              <div key={k.label} className="px-4 py-3.5 min-w-0" style={{ borderLeft: i ? `1px solid ${C.line}` : "none", borderTop: "none" }}>
+                <div className="truncate" style={{ fontSize: 12, color: C.slate }}>{k.label}</div>
+                <div className="truncate" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25, color: k.color || C.ink, fontVariantNumeric: "tabular-nums" }}>{k.value}</div>
+                <div className="truncate" style={{ fontSize: 11.5, color: C.mute }} title={k.sub}>{k.sub}</div>
+              </div>
             ))}
           </div>
-        )}
-      </AnaCard>
+        );
+      })()}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 mb-4">
+      {(() => {
+        const meta = { bad: { label: "ด่วน", color: C.bad }, warn: { label: "ควรดำเนินการ", color: C.warn }, info: { label: "ข้อแนะนำ", color: "#1B5E8A" } };
+        const counts = { bad: 0, warn: 0, info: 0 };
+        actions.forEach((a) => { counts[a.tone] += 1; });
+        const sorted = [...actions].sort((x, y) => ["bad", "warn", "info"].indexOf(x.tone) - ["bad", "warn", "info"].indexOf(y.tone));
+        return (
+          <div className="mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: `1px solid ${C.line}` }}>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>สิ่งที่ต้องจัดการ <span style={{ color: C.mute, fontWeight: 400 }}>({actions.length})</span></h3>
+              <div className="flex items-center gap-3" style={{ fontSize: 12, color: C.slate }}>
+                {["bad", "warn", "info"].map((t) => (
+                  <span key={t} className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-full" style={{ background: meta[t].color }} />{meta[t].label} {counts[t]}</span>
+                ))}
+              </div>
+            </div>
+            {sorted.length === 0 ? <div className="px-4 py-4" style={{ fontSize: 13, color: C.ok }}>ไม่มีเรื่องค้าง</div> : (
+              <div className="grid grid-cols-1 xl:grid-cols-2">
+                {sorted.map((a, i) => (
+                  <button key={i} onClick={() => setTab && setTab(a.tab)} className="text-left px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50"
+                    style={{ borderBottom: `1px solid ${C.line}`, borderLeft: `3px solid ${meta[a.tone].color}` }}>
+                    <span className="shrink-0 px-1.5" style={{ fontSize: 10.5, fontWeight: 700, color: meta[a.tone].color, border: `1px solid ${meta[a.tone].color}40` }}>{meta[a.tone].label}</span>
+                    <span className="flex-1 min-w-0" style={{ fontSize: 13, color: C.ink, lineHeight: 1.45 }}>{a.text}</span>
+                    <ChevronRight size={14} className="shrink-0" style={{ color: C.mute }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <AnaCard title="สุขภาพครุภัณฑ์ (ชิ้น)">
           <ResponsiveContainer width="100%" height={190}>
             <PieChart>
@@ -5101,6 +5171,7 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
   const [q, setQ] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [edit, setEdit] = useState(null);
 
   const filtered = docs.filter((d) => (cat === "ALL" || d.category === cat) && d.title.toLowerCase().includes(q.toLowerCase()));
 
@@ -5126,6 +5197,20 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
     logAction(`ลบเอกสาร: ${d.title}`);
     setConfirmDel(null);
   };
+  const saveEdit = async (form) => {
+    const nextVersion = form.bump ? String((parseInt(edit.version, 10) || 1) + 1) : String(edit.version || "1");
+    const payload = { id: edit.id, title: form.title.trim(), category: form.category, url: form.url.trim(), version: nextVersion, icon: form.icon, updatedBy: user.name };
+    try {
+      await postToSheetsAwait("updateDoc", payload);
+    } catch (e) {
+      alert(`บันทึกการแก้ไขไม่สำเร็จ: ${e.message}\n\nถ้าขึ้นว่าไม่รู้จัก action "updateDoc" แปลว่ายังไม่ได้อัปเดตไฟล์ Extras.gs ใน Apps Script`);
+      return;
+    }
+    saveDocIcon(edit.id, form.icon);
+    setDocs((prev) => prev.map((x) => (x.id === edit.id ? { ...x, title: payload.title, category: payload.category, url: payload.url, version: nextVersion, icon: form.icon, updatedDate: new Date().toLocaleDateString("sv-SE") } : x)));
+    logAction(`แก้ไขเอกสาร: ${payload.title}${form.bump ? ` (v${nextVersion})` : ""}`);
+    setEdit(null);
+  };
 
   return (
     <div>
@@ -5146,23 +5231,36 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filtered.map((d) => (
-            <div key={d.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-              <div className="flex items-start gap-3 mb-2">
-                <BookOpen size={18} style={{ color: C.navy, marginTop: 2 }} />
-                                <DocIcon name={d.icon} size={18} style={{ color: C.navy, marginTop: 2 }} />
+            <div key={d.id} className="p-4 flex flex-col" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-9 h-9 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+                  <DocIcon name={d.icon} size={17} style={{ color: C.navy }} />
+                </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold truncate" style={{ color: C.ink }}>{d.title}</div>
-                  <div className="text-xs" style={{ color: C.mute }}>{d.category} · v{d.version}</div>
+                  <div className="truncate" style={{ fontSize: 14, fontWeight: 600, color: C.ink }} title={d.title}>{d.title}</div>
+                  <div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 12, color: C.mute }}>
+                    <span>{d.category}</span><span>·</span><span className="font-mono">v{d.version}</span>
+                  </div>
                 </div>
               </div>
-              <div className="text-xs mb-3" style={{ color: C.slate }}>อัปโหลดโดย {d.uploadedBy} · {d.updatedDate}</div>
-              <div className="flex items-center justify-between">
-                <a href={d.url} target="_blank" rel="noreferrer" className="text-xs font-semibold flex items-center gap-1" style={{ color: C.navy }}>เปิดเอกสาร <ExternalLink size={12} /></a>
-                {manager && <button onClick={() => setConfirmDel(d)}><X size={14} style={{ color: C.crimson }} /></button>}
+              <div className="mb-3" style={{ fontSize: 12, color: C.slate }}>อัปโหลดโดย {d.uploadedBy || "-"} · อัปเดต {d.updatedDate || "-"}</div>
+              <div className="mt-auto flex items-center justify-between pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+                <a href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:underline" style={{ fontSize: 12.5, fontWeight: 600, color: C.navy }}>เปิดเอกสาร <ExternalLink size={12} /></a>
+                {manager && (
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setEdit(d)} className="flex items-center gap-1 px-2 py-1 hover:bg-gray-50" style={{ fontSize: 12, color: C.navy, border: `1px solid ${C.line}` }} title="แก้ไขเอกสาร"><Pencil size={12} /> แก้ไข</button>
+                    <button onClick={() => setConfirmDel(d)} className="flex items-center gap-1 px-2 py-1 hover:bg-gray-50" style={{ fontSize: 12, color: C.crimson, border: `1px solid ${C.line}` }} title="ลบเอกสาร"><X size={12} /> ลบ</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
+      )}
+      {edit && (
+        <Modal title={`แก้ไขเอกสาร: ${edit.title}`} onClose={() => setEdit(null)}>
+          <DocEditForm doc={edit} onSubmit={saveEdit} />
+        </Modal>
       )}
       {showNew && (
         <Modal title="เพิ่มเอกสาร" onClose={() => setShowNew(false)}>
@@ -5178,6 +5276,48 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function DocEditForm({ doc, onSubmit }) {
+  const [title, setTitle] = useState(doc.title || "");
+  const [category, setCategory] = useState(doc.category || DOC_CATEGORIES[0]);
+  const [icon, setIcon] = useState(doc.icon || "book");
+  const [url, setUrl] = useState(doc.url || "");
+  const [bump, setBump] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const urlOk = /^https?:\/\/\S+$/i.test(url.trim());
+  const ready = title.trim() && urlOk;
+  const cats = DOC_CATEGORIES.includes(category) ? DOC_CATEGORIES : [category, ...DOC_CATEGORIES];
+  const submit = async () => { setBusy(true); try { await onSubmit({ title, category, icon, url, bump }); } finally { setBusy(false); } };
+  return (
+    <div>
+      <Field label="ชื่อเอกสาร *"><input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></Field>
+      <Field label="หมวดหมู่">
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>{cats.map((c) => <option key={c}>{c}</option>)}</select>
+      </Field>
+      <Field label="ไอคอนเอกสาร">
+        <div className="grid grid-cols-3 gap-2">
+          {DOC_ICON_OPTIONS.map(({ key, label, Icon }) => (
+            <button key={key} type="button" onClick={() => setIcon(key)} className="flex items-center justify-center gap-2 px-2 py-2 text-xs font-semibold"
+              style={{ background: icon === key ? C.navy : C.white, color: icon === key ? C.white : C.slate, border: `1px solid ${icon === key ? C.navy : C.line}` }}>
+              <Icon size={14} />{label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="ลิงก์เอกสาร *">
+        <input value={url} onChange={(e) => setUrl(e.target.value)} style={{ ...inputStyle, borderColor: url && !urlOk ? C.bad : C.line }} />
+        <div className="text-[11px] mt-1" style={{ color: url && !urlOk ? C.bad : C.mute }}>{url && !urlOk ? "ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://" : "เปลี่ยนลิงก์ได้ถ้ามีไฟล์ฉบับใหม่"}</div>
+      </Field>
+      <label className="flex items-center gap-2 mt-1 mb-2 cursor-pointer" style={{ fontSize: 13, color: C.ink }}>
+        <input type="checkbox" checked={bump} onChange={(e) => setBump(e.target.checked)} />
+        บันทึกเป็นเวอร์ชันใหม่ (v{doc.version || 1} → v{(parseInt(doc.version, 10) || 1) + 1})
+      </label>
+      <div className="flex justify-end mt-2">
+        <Btn onClick={submit} disabled={!ready || busy} icon={CheckCircle2}>{busy ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}</Btn>
+      </div>
     </div>
   );
 }

@@ -817,7 +817,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         )}
       </header>
 
-     {/* hero — mascot left, login card right on desktop; stacked on mobile */}
+          {/* hero — mascot left, login card right on desktop; stacked on mobile */}
       <div className="flex-1 relative flex flex-col md:flex-row overflow-y-auto overflow-x-hidden" style={{
         background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
       }}>

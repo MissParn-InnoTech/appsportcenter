@@ -12,6 +12,7 @@ import {
   ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
   BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu, KeyRound, Languages, RefreshCw, Copy, EyeOff, Sun, Moon,
   Dumbbell, Waves, Target, Music, Sword, Mountain, Flag, Circle, Landmark,
+  Shuffle, Award, Phone,
 } from "lucide-react";
 import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -646,9 +647,9 @@ const ROLE_META = {
 const NAV = {
   L0: [["profile", "โปรไฟล์", User], ["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
   L1: [["profile", "โปรไฟล์", User], ["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
-  L2: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
-  L3: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L2: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L3: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 // groups the drawer menu into labeled sections (like a categorized mobile-app menu).
@@ -657,7 +658,7 @@ const NAV = {
 const NAV_GROUPS = [
   { label: "ภาพรวม", keys: ["profile", "dashboard", "tasks", "calendar"] },
   { label: "ทรัพยากรและสถานที่", keys: ["inventory", "facility", "borrow", "damage", "maintenance"] },
-  { label: "บุคลากร", keys: ["staff", "schedule"] },
+  { label: "บุคลากร", keys: ["staff", "schedule", "substitute"] },
   { label: "ข้อมูลอ้างอิง", keys: ["budget", "knowledge"] },
   { label: "บริหารจัดการ", keys: ["analytics", "reports", "actions"] },
 ];
@@ -1162,6 +1163,7 @@ export default function App() {
           {tab === "staff" && <StaffDirectory staff={staffList} schedule={allSchedule} tasks={tasks} setStaffList={setStaffList} user={user} logAction={logAction} setTab={setTab} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
           {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} />}
+          {tab === "substitute" && <SubstituteEngine user={user} schedule={allSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
@@ -3663,6 +3665,288 @@ function MiniBar({ label, value, max, color = C.navy, suffix = "" }) {
     <div className="mb-2">
       <div className="flex justify-between text-xs mb-0.5"><span className="truncate pr-2" style={{ color: C.ink }}>{label}</span><span className="font-mono shrink-0" style={{ color: C.slate }}>{value.toLocaleString("th-TH")}{suffix}</span></div>
       <div style={{ height: 6, background: C.paper }}><div style={{ width: `${pct}%`, height: 6, background: color }} /></div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SUBSTITUTE ENGINE — ระบบจัดการสอนแทน
+   ค้นหาครูที่ว่างและเหมาะสมที่สุดสำหรับคาบที่ครูประจำติดภารกิจ/ลา
+   จัดอันดับจากภาระสอนแทนสะสม + ประวัติเคยสอนแทนวิชานั้น + หน่วยงานเดียวกัน
+   บันทึกลง Google Sheets ผ่าน action addSubstitution / listSubstitutions
+   ============================================================ */
+function monthKeyOf(d) { return String(d || "").slice(0, 7); }
+
+const SUB_RESULTS_LIMIT = 12;
+
+function SubstituteEngine({ user, schedule = [], staffList = [], logAction }) {
+  const reportRef = useRef(null);
+  const [subs, setSubs] = useState([]);
+  const [loadState, setLoadState] = useState("loading"); // loading | ready | error
+  const [showAllResults, setShowAllResults] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    postToSheetsAwait("listSubstitutions", {})
+      .then((r) => { if (alive) { setSubs(r.items || []); setLoadState("ready"); } })
+      .catch(() => alive && setLoadState("error"));
+    return () => { alive = false; };
+  }, []);
+
+  const thisMonth = monthKeyOf(new Date().toISOString());
+  const monthSubs = useMemo(() => subs.filter((s) => monthKeyOf(s.date) === thisMonth), [subs, thisMonth]);
+  const uniqueSubTeachers = useMemo(() => new Set(monthSubs.map((s) => s.subTeacherId || s.subTeacher)).size, [monthSubs]);
+  const top3 = useMemo(() => {
+    const m = {};
+    monthSubs.forEach((s) => {
+      const key = s.subTeacherId || s.subTeacher;
+      m[key] = m[key] || { name: s.subTeacher, count: 0 };
+      m[key].count += 1;
+    });
+    return Object.values(m).sort((a, b) => b.count - a.count).slice(0, 3);
+  }, [monthSubs]);
+
+  // ---- wizard state ----
+  const [absentId, setAbsentId] = useState("");
+  const [day, setDay] = useState("");
+  const [rowId, setRowId] = useState("");
+  const [date, setDate] = useState("");
+  const [results, setResults] = useState(null); // null = ยังไม่ค้นหา
+  const [assigning, setAssigning] = useState(null); // candidate ที่กำลังจะยืนยัน
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [justAssigned, setJustAssigned] = useState(null);
+
+  const absentTeacher = staffList.find((s) => String(s.id) === String(absentId));
+  const teacherRows = useMemo(() => {
+    if (!absentTeacher) return [];
+    return schedule.filter((r) => normTeacherName(r.teacher) === normTeacherName(absentTeacher.name) && r.period !== "AS" && !isRoomScheduleRow(r));
+  }, [schedule, absentTeacher]);
+  const availableDays = useMemo(() => DAYS.filter((d) => teacherRows.some((r) => r.day === d)), [teacherRows]);
+  const rowsForDay = useMemo(() => teacherRows.filter((r) => r.day === day)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start))), [teacherRows, day]);
+  const selectedRow = rowsForDay.find((r) => String(r.id || `${r.day}-${r.period}-${r.start}`) === String(rowId));
+
+  // เลือกครูใหม่ → รีเซ็ตขั้นถัดไปที่ผูกกัน
+  const onPickAbsent = (id) => { setAbsentId(id); setDay(""); setRowId(""); setResults(null); };
+  const onPickDay = (d) => { setDay(d); setRowId(""); setResults(null); };
+
+  const canSearch = absentTeacher && selectedRow && date;
+  const search = () => {
+    if (!canSearch) return;
+    const candidates = staffList
+      .filter((s) => String(s.id) !== String(absentTeacher.id))
+      .filter((s) => !schedule.some((r) => normTeacherName(r.teacher) === normTeacherName(s.name) && r.day === selectedRow.day && r.period === selectedRow.period && r.period !== "AS"))
+      .map((s) => {
+        const mine = monthSubs.filter((x) => String(x.subTeacherId) === String(s.id));
+        const taughtSameSubject = subs.some((x) => String(x.subTeacherId) === String(s.id) && x.subject && x.subject === selectedRow.subject);
+        const sameDept = s.dept && s.dept === absentTeacher.dept;
+        let score = 100 - mine.length * 12 + (taughtSameSubject ? 8 : 0) + (sameDept ? 4 : 0);
+        score = Math.max(35, Math.min(100, score));
+        const reasons = [monthSubs.length >= 0 && (mine.length === 0 ? "ยังไม่เคยสอนแทนในเดือนนี้" : `สอนแทนแล้ว ${mine.length} ครั้งเดือนนี้`)];
+        if (taughtSameSubject) reasons.push("เคยสอนแทนวิชานี้มาก่อน");
+        if (sameDept) reasons.push("หน่วยงานเดียวกัน");
+        return { ...s, score, subsThisMonth: mine.length, reason: `ว่างในช่วงเวลานี้ · ${reasons.join(" · ")}` };
+      })
+      .sort((a, b) => b.score - a.score || a.subsThisMonth - b.subsThisMonth || a.name.localeCompare(b.name, "th"));
+    setResults(candidates);
+    setJustAssigned(null);
+    setShowAllResults(false);
+  };
+
+  const confirmAssign = async () => {
+    if (!assigning || !selectedRow) return;
+    setSaving(true);
+    const payload = {
+      date, day: selectedRow.day, period: selectedRow.period, start: selectedRow.start, end: selectedRow.end,
+      subject: selectedRow.subject || "", group: selectedRow.group || "", loc: selectedRow.loc || "",
+      absentTeacherId: absentTeacher.id, absentTeacher: absentTeacher.name,
+      subTeacherId: assigning.id, subTeacher: assigning.name,
+      note, createdBy: user.name,
+    };
+    try {
+      const r = await postToSheetsAwait("addSubstitution", payload);
+      setSubs((prev) => [{ ...payload, id: r.id, createdAt: new Date().toISOString() }, ...prev]);
+      logAction(`มอบหมายครูสอนแทน: ${assigning.name} แทน ${absentTeacher.name} (${selectedRow.day} คาบ ${selectedRow.period})`);
+      setJustAssigned(assigning.id);
+      setAssigning(null); setNote("");
+    } catch (e) {
+      alert(`บันทึกไม่สำเร็จ: ${e.message}`);
+    }
+    setSaving(false);
+  };
+
+  const label = { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate };
+
+  return (
+    <div>
+      <SectionHead eyebrow="SUBSTITUTE ENGINE" title="ระบบจัดการสอนแทน"
+        sub="ค้นหาครูสอนแทนอัตโนมัติ · มอบหมายและติดตามภาระการสอนแทนทั้งเดือน"
+        right={<Btn variant="ghost" icon={FileText} onClick={() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>ดูรายงาน</Btn>} />
+
+      <div className="grid grid-cols-2 gap-4 mb-5">
+        <StatCard icon={Users} label="ครูที่สอนแทนเดือนนี้" value={uniqueSubTeachers} tone="navy" sub={`${new Date().toLocaleDateString("th-TH", { month: "long", year: "numeric" })}`} />
+        <StatCard icon={Shuffle} label="การสอนแทนทั้งหมดเดือนนี้" value={monthSubs.length} tone="crimson" sub="ครั้ง" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+        <div className="lg:col-span-2 p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="mb-4 flex items-center gap-1.5" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}><Search size={15} /> ค้นหาครูสอนแทนอัตโนมัติ</h3>
+          <p className="mb-4" style={{ fontSize: 12, color: C.mute }}>เลือกครู → วัน → ตาราง → วันที่ เพื่อค้นหาผู้ที่เหมาะสม</p>
+
+          <div className="space-y-3">
+            <Field label="① เลือกครู">
+              <select style={inputStyle} value={absentId} onChange={(e) => onPickAbsent(e.target.value)}>
+                <option value="">-- เลือกครู --</option>
+                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` · ${s.role}` : ""}</option>)}
+              </select>
+            </Field>
+            <Field label="② เลือกวัน">
+              <select style={inputStyle} value={day} onChange={(e) => onPickDay(e.target.value)} disabled={!absentTeacher}>
+                <option value="">{absentTeacher ? "-- เลือกวัน --" : "-- เลือกครูก่อน --"}</option>
+                {availableDays.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+              {absentTeacher && !availableDays.length && <div className="mt-1" style={{ fontSize: 11, color: C.mute }}>ไม่พบตารางสอนของครูท่านนี้</div>}
+            </Field>
+            <Field label="③ เลือกตารางสอน">
+              <select style={inputStyle} value={rowId} onChange={(e) => { setRowId(e.target.value); setResults(null); }} disabled={!day}>
+                <option value="">{day ? "-- เลือกคาบที่ต้องการหาครูสอนแทน --" : "-- เลือกวันก่อน --"}</option>
+                {rowsForDay.map((r) => {
+                  const rid = r.id || `${r.day}-${r.period}-${r.start}`;
+                  return <option key={rid} value={rid}>คาบ {r.period} · {r.start}–{r.end} · {r.subject || "-"}{r.group ? ` (${r.group})` : ""}</option>;
+                })}
+              </select>
+              <div className="mt-1" style={{ fontSize: 11, color: C.mute }}>จะแสดงเฉพาะตารางของครู/วันที่เลือก</div>
+            </Field>
+            <Field label="④ วันที่ต้องการครูสอนแทน">
+              <input type="date" style={inputStyle} value={date} onChange={(e) => { setDate(e.target.value); setResults(null); }} />
+            </Field>
+            <Btn onClick={search} disabled={!canSearch} icon={Search}>ค้นหาครูสอนแทน</Btn>
+          </div>
+        </div>
+
+        <div className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="mb-3 flex items-center gap-1.5" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}><Trophy size={15} style={{ color: C.gold }} /> ครูที่สอนแทนมากที่สุด</h3>
+          <div className="mb-3" style={{ fontSize: 11, color: C.mute }}>Top 3 ของเดือนนี้</div>
+          {top3.length ? (
+            <div className="space-y-2">
+              {top3.map((t, i) => (
+                <div key={t.name + i} className="flex items-center gap-3 px-3 py-2.5" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+                  <div className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center font-bold text-xs"
+                    style={{ background: i === 0 ? C.gold : i === 1 ? C.slate : "#B08D57", color: C.white }}>{i + 1}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate" style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: C.mute }}>สอนแทน {t.count} ครั้ง</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <div style={{ fontSize: 12, color: C.mute }} className="py-4 text-center">ยังไม่มีข้อมูลสอนแทนในเดือนนี้</div>}
+        </div>
+      </div>
+
+      {results && (
+        <div className="p-5 mb-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="flex items-center gap-1.5" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}><UserCheck size={15} /> ครูที่เหมาะสมสำหรับการสอนแทน</h3>
+            <span style={{ fontSize: 12, color: C.mute }}>เรียงตามคะแนนความเหมาะสม · {results.length} คน</span>
+          </div>
+          {selectedRow && (
+            <div className="mb-4 px-3 py-2" style={{ fontSize: 12, color: C.slate, background: C.paper, border: `1px solid ${C.line}` }}>
+              แทน <b style={{ color: C.ink }}>{absentTeacher.name}</b> · {selectedRow.day} คาบ {selectedRow.period} ({selectedRow.start}–{selectedRow.end}) · {selectedRow.subject || "-"} · วันที่ {date}
+            </div>
+          )}
+          {!results.length ? (
+            <div className="py-10 text-center" style={{ fontSize: 13, color: C.mute, border: `1px dashed ${C.line}` }}>ไม่พบครูที่ว่างในช่วงเวลานี้</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {(showAllResults ? results : results.slice(0, SUB_RESULTS_LIMIT)).map((c) => {
+                const done = justAssigned === c.id;
+                return (
+                  <div key={c.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderTop: `3px solid ${done ? C.ok : C.navy}` }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center font-bold text-xs" style={{ background: C.navy, color: C.white }}>
+                        {c.name.replace(/^(นาย|นาง|น\.ส\.)/, "").slice(0, 1)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate" style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{c.name}</div>
+                        <div className="truncate" style={{ fontSize: 11, color: C.mute }}>{c.role || c.dept || "-"}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2" style={{ fontSize: 11, color: C.slate, lineHeight: 1.4 }}>{c.reason}</div>
+                    <div className="mt-2 flex items-center justify-between" style={{ fontSize: 11, color: C.mute }}>
+                      <span>คะแนนความเหมาะสม</span><span style={{ fontWeight: 700, color: C.ink }}>{c.score}%</span>
+                    </div>
+                    <div style={{ height: 6, background: C.paper }}><div style={{ width: `${c.score}%`, height: 6, background: c.score >= 80 ? C.ok : c.score >= 60 ? C.warn : C.crimson }} /></div>
+                    {c.phone && <div className="mt-2 flex items-center gap-1" style={{ fontSize: 11, color: C.mute }}><Phone size={11} />{c.phone}</div>}
+                    <button onClick={() => { setAssigning(c); setNote(""); }} disabled={done}
+                      className="mt-3 w-full text-center py-2 text-xs font-semibold"
+                      style={{ background: done ? C.okBg : C.navy, color: done ? C.ok : C.white, border: done ? `1px solid ${C.ok}` : "none" }}>
+                      {done ? "มอบหมายแล้ว ✓" : "เลือกครูคนนี้"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {results.length > SUB_RESULTS_LIMIT && (
+            <div className="text-center mt-4">
+              <Btn small variant="ghost" onClick={() => setShowAllResults((v) => !v)}>
+                {showAllResults ? "แสดงน้อยลง" : `แสดงทั้งหมด (${results.length} คน)`}
+              </Btn>
+            </div>
+          )}
+        </div>
+      )}
+
+      {assigning && (
+        <Modal title="ยืนยันการมอบหมายครูสอนแทน" onClose={() => setAssigning(null)}>
+          <div style={{ fontSize: 13, color: C.ink }} className="mb-3">
+            มอบหมายให้ <b>{assigning.name}</b> สอนแทน <b>{absentTeacher?.name}</b><br />
+            {selectedRow && <>{selectedRow.day} คาบ {selectedRow.period} ({selectedRow.start}–{selectedRow.end}) · {selectedRow.subject || "-"} · วันที่ {date}</>}
+          </div>
+          <Field label="หมายเหตุ (ถ้ามี)">
+            <textarea style={{ ...inputStyle, minHeight: 70 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น เหตุผลที่ครูประจำติดภารกิจ" />
+          </Field>
+          <div className="flex justify-end gap-2 mt-2">
+            <Btn variant="ghost" onClick={() => setAssigning(null)}>ยกเลิก</Btn>
+            <Btn onClick={confirmAssign} disabled={saving}>{saving ? "กำลังบันทึก..." : "ยืนยันมอบหมาย"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      <div ref={reportRef} className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="flex items-center gap-1.5" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}><Award size={15} /> รายงานการสอนแทนเดือนนี้</h3>
+          <Btn small variant="ghost" icon={Download} onClick={() => window.print()}>พิมพ์รายงาน</Btn>
+        </div>
+        {loadState === "error" && <div className="mb-3" style={{ fontSize: 12, color: C.crimson }}>โหลดข้อมูลสอนแทนไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ Google Sheets</div>}
+        {monthSubs.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full" style={{ fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${C.navy}` }}>
+                  {["วันที่", "วัน/คาบ", "วิชา", "ครูที่ขาด", "ครูสอนแทน", "หมายเหตุ"].map((h) => (
+                    <th key={h} className="text-left py-2 pr-3" style={{ color: C.slate, fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {monthSubs.sort((a, b) => String(b.date).localeCompare(String(a.date))).map((s, i) => (
+                  <tr key={s.id || i} style={{ borderBottom: `1px solid ${C.line}` }}>
+                    <td className="py-2 pr-3 font-mono" style={{ color: C.ink }}>{s.date}</td>
+                    <td className="py-2 pr-3" style={{ color: C.ink }}>{s.day} · คาบ {s.period}</td>
+                    <td className="py-2 pr-3" style={{ color: C.ink }}>{s.subject || "-"}</td>
+                    <td className="py-2 pr-3" style={{ color: C.ink }}>{s.absentTeacher}</td>
+                    <td className="py-2 pr-3" style={{ color: C.ink, fontWeight: 600 }}>{s.subTeacher}</td>
+                    <td className="py-2 pr-3" style={{ color: C.mute }}>{s.note || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="py-10 text-center" style={{ fontSize: 13, color: C.mute }}>ยังไม่มีการสอนแทนในเดือนนี้</div>}
+      </div>
     </div>
   );
 }

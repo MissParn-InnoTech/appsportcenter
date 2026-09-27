@@ -3594,6 +3594,10 @@ const REPORT_CATALOG = [
 
 function Reports({ user, items = [], borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], repairs = [], pmSchedule = [], docs = [] }) {
   const [key, setKey] = useState("inventory");
+  const [rq, setRq] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const countBy = (arr, fn) => { const m = {}; arr.forEach((x) => { const k = fn(x) || "ไม่ระบุ"; m[k] = (m[k] || 0) + 1; }); return Object.entries(m).map(([name, value]) => ({ name, value })).sort((x, y) => y.value - x.value); };
+  const one = (name, color = C.ink) => [{ key: "value", name, color }];
   const now = new Date();
   const nowStr = now.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" });
 
@@ -3611,7 +3615,10 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "ชำรุด (ชิ้น)", value: items.reduce((s, i) => s + i.damaged, 0), tone: "crimson" },
         { label: "สูญหาย (ชิ้น)", value: items.reduce((s, i) => s + (i.lost || 0), 0), tone: "gold" },
       ];
-      return { rows, summary };
+      const byC = {};
+      items.forEach((i) => { const n = catName(i.catCode); byC[n] = byC[n] || { name: n, ok: 0, damaged: 0 }; byC[n].ok += i.normal; byC[n].damaged += i.damaged; });
+      const chart = { title: "จำนวนชิ้นตามหมวด (10 หมวดที่มีมากที่สุด)", stacked: true, data: Object.values(byC).sort((x, y) => (y.ok + y.damaged) - (x.ok + x.damaged)).slice(0, 10), bars: [{ key: "ok", name: "ใช้งานได้", color: C.ok }, { key: "damaged", name: "ชำรุด", color: C.crimson }] };
+      return { rows, summary, chart };
     }
     if (key === "facility") {
       const rows = LOCATIONS.map((l) => {
@@ -3631,7 +3638,8 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "คาบใช้งาน/สัปดาห์", value: schedule.length },
         { label: "อุปกรณ์ทั้งหมด", value: items.length },
       ];
-      return { rows, summary };
+      const chart = { title: "คาบใช้งานต่อสัปดาห์ (10 สถานที่ที่ใช้มากที่สุด)", bars: one("คาบ/สัปดาห์"), data: rows.map((r) => ({ name: r["สถานที่"], value: r["คาบต่อสัปดาห์"] })).filter((r) => r.value > 0).sort((x, y) => y.value - x.value).slice(0, 10) };
+      return { rows, summary, chart };
     }
     if (key === "borrowing") {
       const rows = borrows.map((b) => ({
@@ -3646,7 +3654,12 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "ยังไม่คืน", value: active.length, tone: "gold" },
         { label: "เกินกำหนดคืน", value: overdue.length, tone: "crimson" },
       ];
-      return { rows, summary };
+      const chart = { title: "สถานะการยืม", bars: one("รายการ"), data: [
+        { name: "ยังไม่คืน (ในกำหนด)", value: active.length - overdue.length },
+        { name: "เกินกำหนดคืน", value: overdue.length },
+        { name: "คืนแล้ว", value: borrows.length - active.length },
+      ].filter((r) => r.value > 0) };
+      return { rows, summary, chart };
     }
     if (key === "damage") {
       const rows = damages.map((d) => ({
@@ -3658,7 +3671,8 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "รายการแจ้งชำรุดทั้งหมด", value: damages.length },
         { label: "รอดำเนินการ", value: open.length, tone: "crimson" },
       ];
-      return { rows, summary };
+      const chart = { title: "การแจ้งชำรุดตามสถานะ", bars: one("รายการ", C.crimson), data: countBy(damages, (d) => d.status) };
+      return { rows, summary, chart };
     }
     if (key === "maintenance") {
       const rows = repairs.map((r) => ({
@@ -3673,7 +3687,10 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "ค่าใช้จ่ายรวม (บาท)", value: totalCost.toLocaleString() },
         { label: "นัด PM ใน 30 วัน", value: pmSoon, tone: "gold" },
       ];
-      return { rows, summary };
+      const byM = {};
+      repairs.forEach((r) => { const m = String(r.date || "").slice(0, 7); if (m) byM[m] = (byM[m] || 0) + (r.cost || 0); });
+      const chart = { title: "ค่าซ่อมรายเดือน (บาท)", bars: one("บาท"), data: Object.entries(byM).sort((x, y) => x[0].localeCompare(y[0])).slice(-12).map(([name, value]) => ({ name, value })) };
+      return { rows, summary, chart };
     }
     if (key === "schedule") {
       const perTeacher = {};
@@ -3695,7 +3712,8 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "คาบรวม/สัปดาห์", value: schedule.length },
         { label: "ตารางรวมกีฬา (คาบ)", value: combinedSport.length },
       ];
-      return { rows, summary };
+      const chart = { title: "คาบสอนต่อสัปดาห์ (10 คนที่มากที่สุด)", bars: one("คาบ/สัปดาห์"), data: rows.slice(0, 10).map((r) => ({ name: r["ครูผู้สอน"], value: r["คาบต่อสัปดาห์"] })) };
+      return { rows, summary, chart };
     }
     if (key === "staff") {
       const rows = staffList.map((s) => ({
@@ -3710,7 +3728,8 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "L1 (ครู)", value: byLevel.L1 || 0 },
         { label: "L2 (ผู้ช่วย)", value: byLevel.L2 || 0 },
       ];
-      return { rows, summary };
+      const chart = { title: "บุคลากรตามหน่วยงาน", bars: one("คน"), data: countBy(staffList, (x) => x.dept).slice(0, 10) };
+      return { rows, summary, chart };
     }
     if (key === "tasks") {
       const rows = tasks.map((t) => ({
@@ -3725,7 +3744,8 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         { label: "เกินกำหนด", value: tasks.filter((t) => taskBucket(t) === "overdue").length, tone: "crimson" },
         { label: "ยังไม่ระบุผู้รับผิดชอบ", value: active.filter((t) => !t.assignee).length, tone: "gold" },
       ];
-      return { rows, summary };
+      const chart = { title: "งานตามสถานะ", bars: one("งาน"), data: countBy(tasks, (t) => (taskBucket(t) === "overdue" ? STATUS_META.OVERDUE.label : STATUS_META[t.status]?.label || t.status)) };
+      return { rows, summary, chart };
     }
     // monthly: ภาพรวมทุกด้าน
     const rows = [
@@ -3747,7 +3767,7 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
   const current = REPORT_CATALOG.find((r) => r.key === key);
   const exportCsv = () => {
     if (!report.rows.length) return;
-    const blob = new Blob(["\ufeff" + toCsv(report.rows)], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["﻿" + toCsv(report.rows)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `ACT_Sport_${current.label}_${TODAY_ISO}.csv`; a.click();
     URL.revokeObjectURL(url);
@@ -3755,61 +3775,170 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
   const printPage = () => window.print();
 
   const headers = report.rows[0] ? Object.keys(report.rows[0]) : [];
+  const q = rq.trim().toLowerCase();
+  const filtered = q ? report.rows.filter((r) => Object.values(r).some((v) => String(v ?? "").toLowerCase().includes(q))) : report.rows;
+  const shown = showAll ? filtered : filtered.slice(0, 25);
+  const isNum = (v) => typeof v === "number" || /^-?[\d,]+(\.\d+)?$/.test(String(v ?? ""));
+  const numCols = new Set(headers.filter((h) => report.rows.slice(0, 20).every((r) => r[h] === "-" || r[h] === "" || isNum(r[h]))));
+  const statusTone = (v) => {
+    const t = String(v || "");
+    if (/COMPLETED|เสร็จ|คืนแล้ว|returned|resolved|ปกติ|อนุมัติ/i.test(t)) return [C.ok, C.okBg];
+    if (/OVERDUE|เกิน|ชำรุด|ปฏิเสธ|สูญหาย|lost/i.test(t)) return [C.bad, C.badBg];
+    if (/IN_PROGRESS|กำลัง|borrowed|ยืม|รอ|WAITING|TODO/i.test(t)) return [C.warn, C.warnBg];
+    return [C.slate, C.paper];
+  };
+  const toneColor = { crimson: C.crimson, gold: C.warn, ok: C.ok, navy: C.ink };
+  const lbl = { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate };
 
   return (
-    <div>
-      <SectionHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูลสด ณ ${nowStr} — สามารถส่งออก CSV หรือพิมพ์เก็บได้ทุกรายงาน`} />
-      <div className="grid grid-cols-4 gap-4">
-        <div className="col-span-1 space-y-1">
-          {REPORT_CATALOG.map((r) => (
-            <button key={r.key} onClick={() => setKey(r.key)} className="w-full text-left px-3 py-2.5 text-sm"
-              style={{ background: key === r.key ? C.navy : C.white, color: key === r.key ? C.white : C.ink, border: `1px solid ${C.line}` }}>
-              <div className="font-semibold">{r.label}</div>
-              <div className="text-[10.5px] mt-0.5" style={{ color: key === r.key ? "rgba(255,255,255,0.7)" : C.mute }}>{r.desc}</div>
-            </button>
-          ))}
+    <div className="report-page">
+      <style>{`@media print {
+        .desktop-sidebar, header, nav, .no-print { display: none !important; }
+        main { padding: 0 !important; overflow: visible !important; }
+        .report-grid { display: block !important; }
+        .report-sheet { border: none !important; box-shadow: none !important; }
+        .report-page .table-scroll { overflow: visible !important; }
+      }`}</style>
+      <div className="no-print">
+        <SectionHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูลสด ณ ${nowStr} · เลือกรายงาน แล้วส่งออก CSV หรือพิมพ์เป็น PDF ได้`} />
+      </div>
+
+      <div className="report-grid grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* รายการรายงาน */}
+        <div className="no-print lg:col-span-1">
+          <div className="lg:sticky lg:top-0" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <div className="px-4 py-3" style={{ ...lbl, borderBottom: `1px solid ${C.line}` }}>ประเภทรายงาน</div>
+            {REPORT_CATALOG.map((r, i) => {
+              const on = key === r.key;
+              return (
+                <button key={r.key} onClick={() => { setKey(r.key); setRq(""); setShowAll(false); }} className="w-full text-left px-4 py-3 flex items-start gap-3"
+                  style={{ background: on ? C.paper : C.white, borderLeft: `3px solid ${on ? C.crimson : "transparent"}`, borderBottom: i < REPORT_CATALOG.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                  <span className="shrink-0 font-mono" style={{ fontSize: 11, color: on ? C.crimson : C.mute, paddingTop: 2 }}>{String(i + 1).padStart(2, "0")}</span>
+                  <span className="min-w-0">
+                    <span className="block" style={{ fontSize: 13, fontWeight: 600, color: on ? C.ink : C.navySoft }}>{r.label}</span>
+                    <span className="block mt-0.5" style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.4 }}>{r.desc}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="col-span-3 space-y-4">
-          <div className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-            <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
+
+        {/* เอกสารรายงาน */}
+        <div className="lg:col-span-3 report-sheet" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="px-6 pt-6 pb-5" style={{ borderBottom: `2px solid ${C.ink}` }}>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
-                <h3 className="font-bold text-lg" style={{ color: C.navy }}>{current.label}</h3>
-                <p className="text-sm mt-0.5" style={{ color: C.slate }}>{current.desc}</p>
+                <div style={{ ...lbl, color: C.crimson }}>ศูนย์กีฬา · โรงเรียนอัสสัมชัญธนบุรี</div>
+                <h2 className="mt-1" style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>รายงาน{current.label}</h2>
+                <p className="mt-1" style={{ fontSize: 13, color: C.slate }}>{current.desc}</p>
               </div>
-              <div className="flex gap-2">
-                <Btn variant="ghost" small icon={FileText} onClick={printPage}>พิมพ์</Btn>
+              <div className="no-print flex gap-2">
+                <Btn variant="ghost" small icon={FileText} onClick={printPage}>พิมพ์ / PDF</Btn>
                 <Btn small icon={Download} onClick={exportCsv} disabled={!report.rows.length}>ส่งออก CSV</Btn>
               </div>
             </div>
-            <div className={`grid gap-3 mb-2 grid-cols-${Math.min(report.summary.length, 4)}`}>
-              {report.summary.map((c) => <StatCard key={c.label} label={c.label} value={c.value} tone={c.tone || "navy"} />)}
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1" style={{ fontSize: 12, color: C.slate }}>
+              <div><span style={{ color: C.mute }}>วันที่ออกรายงาน</span> · <b style={{ color: C.ink, fontWeight: 600 }}>{nowStr}</b></div>
+              <div><span style={{ color: C.mute }}>ผู้จัดทำ</span> · <b style={{ color: C.ink, fontWeight: 600 }}>{user?.name || "-"}</b></div>
+              <div><span style={{ color: C.mute }}>จำนวนข้อมูล</span> · <b style={{ color: C.ink, fontWeight: 600 }}>{report.rows.length.toLocaleString()} แถว</b></div>
             </div>
           </div>
-          <div className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-sm" style={{ color: C.navy }}>ตัวอย่างข้อมูล ({report.rows.length} แถว)</h4>
-              {report.rows.length > 25 && <span className="text-xs" style={{ color: C.mute }}>แสดง 25 แถวแรก · ส่งออกเพื่อดูทั้งหมด</span>}
+
+          {/* ตัวเลขสรุป */}
+          <div className="px-6 py-5" style={{ borderBottom: `1px solid ${C.line}` }}>
+            <div style={lbl}>สรุปผล</div>
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+              {report.summary.map((c) => (
+                <div key={c.label} className="p-3" style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: `3px solid ${toneColor[c.tone] || C.ink}` }}>
+                  <div style={{ fontSize: 12, color: C.slate }}>{c.label}</div>
+                  <div className="mt-1" style={{ fontSize: typeof c.value === "string" && c.value.length > 10 ? 16 : 26, fontWeight: 700, lineHeight: 1.15, color: toneColor[c.tone] || C.ink, fontVariantNumeric: "tabular-nums" }}>
+                    {typeof c.value === "number" ? c.value.toLocaleString() : c.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* กราฟ */}
+          {report.chart && report.chart.data.length > 0 && (
+            <div className="px-6 py-5" style={{ borderBottom: `1px solid ${C.line}` }}>
+              <div className="flex items-center justify-between">
+                <div style={lbl}>{report.chart.title}</div>
+                {report.chart.bars.length > 1 && (
+                  <div className="flex gap-3" style={{ fontSize: 12, color: C.slate }}>
+                    {report.chart.bars.map((b) => <span key={b.key} className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5" style={{ background: b.color }} />{b.name}</span>)}
+                  </div>
+                )}
+              </div>
+              <div className="mt-3">
+                <ResponsiveContainer width="100%" height={Math.max(160, report.chart.data.length * 30 + 30)}>
+                  <BarChart data={report.chart.data} layout="vertical" margin={{ top: 0, right: 36, left: 0, bottom: 0 }} barCategoryGap={6}>
+                    <CartesianGrid stroke={C.line} horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fontFamily: FONT, fill: C.slate }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 12, fontFamily: FONT, fill: C.ink }} axisLine={{ stroke: C.line }} tickLine={false} interval={0} />
+                    <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} cursor={{ fill: C.paper }} />
+                    {report.chart.bars.map((b) => (
+                      <Bar key={b.key} dataKey={b.key} name={b.name} fill={b.color} stackId={report.chart.stacked ? "s" : undefined} maxBarSize={18}
+                        label={report.chart.bars.length === 1 ? { position: "right", fontSize: 11, fontFamily: FONT, fill: C.slate } : undefined} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* ตารางข้อมูล */}
+          <div className="px-6 py-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div style={lbl}>รายละเอียดข้อมูล <span style={{ color: C.mute, textTransform: "none", letterSpacing: 0 }}>({filtered.length.toLocaleString()} แถว{q ? ` จาก ${report.rows.length.toLocaleString()}` : ""})</span></div>
+              {report.rows.length > 0 && (
+                <div className="no-print relative" style={{ width: 240 }}>
+                  <Search size={14} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+                  <input value={rq} onChange={(e) => setRq(e.target.value)} placeholder="กรองข้อมูลในตาราง..." style={{ ...inputStyle, paddingLeft: 30, fontSize: 13 }} />
+                </div>
+              )}
             </div>
             {report.rows.length === 0 ? (
-              <div className="p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}` }}>ยังไม่มีข้อมูลในรายงานนี้</div>
+              <div className="p-8 text-center" style={{ fontSize: 13, color: C.mute, border: `1px dashed ${C.line}` }}>ยังไม่มีข้อมูลในรายงานนี้</div>
             ) : (
-              <div className="table-scroll">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ background: C.paper }}>
-                      {headers.map((h) => <th key={h} className="text-left px-2 py-2 font-semibold" style={{ color: C.slate, borderBottom: `1px solid ${C.line}` }}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.rows.slice(0, 25).map((r, i) => (
-                      <tr key={i} style={{ borderBottom: `1px solid ${C.line}` }}>
-                        {headers.map((h) => <td key={h} className="px-2 py-2" style={{ color: C.ink }}>{String(r[h] ?? "-")}</td>)}
+              <>
+                <div className="table-scroll" style={{ border: `1px solid ${C.line}` }}>
+                  <table className="w-full" style={{ fontSize: 12.5, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: C.ink }}>
+                        <th className="text-right px-3 py-2.5" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.6)", width: 40 }}>#</th>
+                        {headers.map((h) => <th key={h} className={`px-3 py-2.5 whitespace-nowrap ${numCols.has(h) ? "text-right" : "text-left"}`} style={{ fontSize: 11.5, fontWeight: 600, color: C.white }}>{h}</th>)}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {shown.map((r, i) => (
+                        <tr key={i} style={{ background: i % 2 ? C.paper : C.white, borderTop: `1px solid ${C.line}` }}>
+                          <td className="text-right px-3 py-2 font-mono" style={{ fontSize: 11, color: C.mute }}>{i + 1}</td>
+                          {headers.map((h) => {
+                            const v = r[h];
+                            if (/สถานะ|ความสำคัญ|ระดับสิทธิ์/.test(h) && v && v !== "-") { const [fg, bg] = statusTone(v); return <td key={h} className="px-3 py-2 whitespace-nowrap"><Pill fg={fg} bg={bg}>{STATUS_META[v]?.label || String(v)}</Pill></td>; }
+                            const num = numCols.has(h);
+                            const wide = /รายการ|อุปกรณ์|ชื่องาน|ชื่อ$|สาเหตุ|วัตถุประสงค์|หน้าที่|สภาพ|ชื่ออุปกรณ์/.test(h);
+                            return <td key={h} className={`px-3 py-2 ${num ? "text-right" : ""} ${wide ? "" : "whitespace-nowrap"}`} style={{ minWidth: wide ? 200 : undefined, color: v === "-" || v === "" || v === 0 ? C.mute : C.ink, fontVariantNumeric: num ? "tabular-nums" : undefined, fontWeight: num && v && v !== "-" ? 600 : 400 }}>{typeof v === "number" ? v.toLocaleString() : String(v ?? "-")}</td>;
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {filtered.length > 25 && (
+                  <div className="no-print mt-3 flex items-center justify-between" style={{ fontSize: 12, color: C.slate }}>
+                    <span>แสดง {shown.length.toLocaleString()} จาก {filtered.length.toLocaleString()} แถว</span>
+                    <Btn small variant="ghost" onClick={() => setShowAll((x) => !x)}>{showAll ? "แสดงแค่ 25 แถว" : "แสดงทั้งหมด"}</Btn>
+                  </div>
+                )}
+              </>
             )}
+          </div>
+          <div className="px-6 py-3 flex justify-between" style={{ fontSize: 11, color: C.mute, borderTop: `1px solid ${C.line}`, background: C.paper }}>
+            <span>ACT Sport Center · ระบบบริหารทรัพยากรศูนย์กีฬา</span>
+            <span>ออกรายงาน {nowStr}</span>
           </div>
         </div>
       </div>

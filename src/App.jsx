@@ -1309,7 +1309,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
             </div>
 
             <div className="text-xs leading-relaxed" style={{ marginTop: "clamp(10px, 3vh, 24px)", color: "rgba(255,255,255,0.35)" }}>
-              © 2026 Assumption College Thonburi<br />ACT Sport Center Resource Intelligence · v1.0.0
+              © 2026 Assumption College Thonburi<br />ACT Sport Center Resource Intelligence · v3.1.1
               <br />Developer : P.Prayoon-Anutep
             </div>
 

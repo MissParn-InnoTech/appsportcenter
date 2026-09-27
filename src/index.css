@@ -92,3 +92,10 @@ body {
     display: flex !important;
   }
 }
+
+/* ---- ธีมมืด: ส่วนที่ใช้คลาส Tailwind สีคงที่ ---- */
+html[data-theme="dark"] body { background: #0F1013; }
+html[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: #1F2228 !important; }
+html[data-theme="dark"] .recharts-default-tooltip { background: #17191E !important; border-color: #2B2E36 !important; color: #E8E9EC; }
+html[data-theme="dark"] .recharts-cartesian-grid line { stroke: #2B2E36; }
+html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color: #6E7382; }

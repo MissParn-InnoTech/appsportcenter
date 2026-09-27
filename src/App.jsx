@@ -9,7 +9,7 @@ import {
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
   Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
   ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
-  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu, KeyRound, Languages, RefreshCw, Copy, EyeOff,
+  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu, KeyRound, Languages, RefreshCw, Copy, EyeOff, Sun, Moon,
   Dumbbell, Waves, Target, Music, Sword, Mountain, Flag, Circle, Landmark,
 } from "lucide-react";
 import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
@@ -28,7 +28,7 @@ const calendarLocalizer = dateFnsLocalizer({
    sports-technology feel. No rounded "SaaS card kit" sameness —
    flat panels, a hairline rule system, and a court-line motif.
    ============================================================ */
-const C = {
+const C_LIGHT = {
   navy: "#181818",       // primary — near-black (was deep royal blue)
   navyDeep: "#0A0A0A",   // sidebar / hero — true black
   navySoft: "#3D3D3D",   // secondary neutral
@@ -49,7 +49,51 @@ const C = {
   bad: "#B91C3C",
   badBg: "#FBEAEC",
   mute: "#8A8FA0",
+  onDark: "#FFFFFF",     // ตัวอักษรบนพื้นเข้ม/สีแดง — ขาวเสมอทั้งสองธีม
+  badLine: "#E9B9C1",
+  info: "#1B5E8A",
+  infoBg: "#EAF2FB",
 };
+
+// ธีมมืด — ใช้ชื่อสีเดียวกัน สลับค่าเมื่อผู้ใช้เปลี่ยนธีม
+const C_DARK = {
+  navy: "#E6E8EE",       // หัวข้อ/ปุ่มหลัก → สว่างบนพื้นมืด
+  navyDeep: "#050506",
+  navySoft: "#B8BDC8",
+  crimson: "#E3425C",
+  crimsonDeep: "#F2899A",
+  gold: "#E36A7E",
+  goldSoft: "#3A1C22",
+  accent: "#E4354F",
+  ink: "#E8E9EC",
+  slate: "#A4A9B6",
+  line: "#2B2E36",
+  paper: "#0F1013",
+  white: "#17191E",      // พื้นการ์ด
+  ok: "#44BD7F",
+  okBg: "#12281D",
+  warn: "#E2A541",
+  warnBg: "#2B2212",
+  bad: "#F25E76",
+  badBg: "#2E1419",
+  mute: "#7F8493",
+  onDark: "#FFFFFF",
+  badLine: "#5A2530",
+  info: "#72B6E8",
+  infoBg: "#12222F",
+};
+
+const C = { ...C_LIGHT };
+function readTheme() { try { return localStorage.getItem("act-theme") === "dark" ? "dark" : "light"; } catch { return "light"; } }
+function applyTheme(t) {
+  Object.assign(C, t === "dark" ? C_DARK : C_LIGHT);
+  try { localStorage.setItem("act-theme", t); } catch { /* ignore */ }
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.theme = t;
+    document.documentElement.style.colorScheme = t;
+  }
+}
+applyTheme(readTheme());
 
 const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,sans-serif";
 
@@ -314,15 +358,15 @@ const PRIORITY_META = {
   CRITICAL: { label: "วิกฤต", fg: "#FFFFFF", bg: "#B91C3C" },
   HIGH: { label: "สูง", fg: "#B91C3C", bg: "#FBEAEC" },
   NORMAL: { label: "ปกติ", fg: "#B8791A", bg: "#FBF1DF" },
-  LOW: { label: "ต่ำ", fg: "#5B6273", bg: "#F2F3F7" },
+  LOW: { label: "ต่ำ", fg: "#5B6273", bg: C.paper },
 };
 const STATUS_META = {
-  TODO: { label: "รอดำเนินการ", fg: "#5B6273", bg: "#F2F3F7" },
-  IN_PROGRESS: { label: "กำลังทำ", fg: "#1E3A8A", bg: "#E8EEFC" },
-  WAITING: { label: "รอข้อมูล/อะไหล่", fg: "#B8791A", bg: "#FBF1DF" },
-  COMPLETED: { label: "เสร็จแล้ว", fg: "#1E7A4C", bg: "#EAF6EF" },
-  OVERDUE: { label: "เกินกำหนด", fg: "#FFFFFF", bg: "#B91C3C" },
-  CANCELLED: { label: "ยกเลิก", fg: "#8A8FA0", bg: "#F2F3F7" },
+  get TODO() { return { label: "รอดำเนินการ", fg: C.slate, bg: C.paper }; },
+  get IN_PROGRESS() { return { label: "กำลังทำ", fg: C.info, bg: C.infoBg }; },
+  get WAITING() { return { label: "รอข้อมูล/อะไหล่", fg: C.warn, bg: C.warnBg }; },
+  get COMPLETED() { return { label: "เสร็จแล้ว", fg: C.ok, bg: C.okBg }; },
+  get OVERDUE() { return { label: "เกินกำหนด", fg: "#FFFFFF", bg: C.bad }; },
+  get CANCELLED() { return { label: "ยกเลิก", fg: C.mute, bg: C.paper }; },
 };
 function isTaskOverdue(t) {
   if (t.status === "COMPLETED" || t.status === "CANCELLED") return false;
@@ -590,11 +634,11 @@ const STAFF = [
 ];
 
 const ROLE_META = {
-  L0: { label: "L0 · ครูนอกสังกัด", dash: "ยืม–คืนอุปกรณ์เท่านั้น", tint: C.crimson },
-  L1: { label: "L1 · Teacher", dash: "MY WORKSPACE", tint: C.navySoft },
-  L2: { label: "L2 · Staff", dash: "OPERATIONS CENTER", tint: C.navy },
-  L3: { label: "L3 · Manager", dash: "RESOURCE COMMAND CENTER", tint: C.crimson },
-  L4: { label: "L4 · Executive", dash: "EXECUTIVE OVERVIEW · READ ONLY", tint: C.gold },
+  L0: { label: "L0 · ครูนอกสังกัด", dash: "ยืม–คืนอุปกรณ์เท่านั้น", get tint() { return C.crimson; } },
+  L1: { label: "L1 · Teacher", dash: "MY WORKSPACE", get tint() { return C.navySoft; } },
+  L2: { label: "L2 · Staff", dash: "OPERATIONS CENTER", get tint() { return C.navy; } },
+  L3: { label: "L3 · Manager", dash: "RESOURCE COMMAND CENTER", get tint() { return C.crimson; } },
+  L4: { label: "L4 · Executive", dash: "EXECUTIVE OVERVIEW · READ ONLY", get tint() { return C.gold; } },
 };
 
 const NAV = {
@@ -657,9 +701,9 @@ function Btn({ children, onClick, variant = "primary", disabled, icon: Icon, sma
   const sizing = small ? "px-2.5 py-1 text-xs" : "px-4 py-2 text-sm";
   const styles = {
     primary: { background: C.navy, color: C.white },
-    crimson: { background: C.crimson, color: C.white },
+    crimson: { background: C.crimson, color: C.onDark },
     ghost: { background: "transparent", color: C.navy, border: `1px solid ${C.line}` },
-    gold: { background: C.gold, color: C.white },
+    gold: { background: C.gold, color: C.onDark },
   };
   return (
     <button onClick={onClick} disabled={disabled} className={`${base} ${sizing}`} style={styles[variant]}>
@@ -682,15 +726,15 @@ function SectionHead({ eyebrow, title, sub, right }) {
   );
 }
 
-const STAT_CARD_TONES = { navy: C.navy, ok: C.ok, crimson: C.crimson, gold: C.warn };
+const STAT_CARD_TONES = { get navy() { return C.navy; }, get ok() { return C.ok; }, get crimson() { return C.crimson; }, get gold() { return C.warn; } };
 
 const StatCard = ({ icon: Icon, label, value, color, tone, sub, onClick }) => {
   const accent = color || STAT_CARD_TONES[tone] || C.navy;
   return (
     <div
       onClick={onClick}
-      className={`bg-white px-4 py-3.5 ${onClick ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-      style={{ border: `1px solid ${C.line}`, borderLeft: `3px solid ${accent}` }}
+      className={`px-4 py-3.5 ${onClick ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+      style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${accent}` }}
     >
       <div className="flex items-start gap-3">
         {Icon && (
@@ -767,12 +811,25 @@ function Field({ label, children }) {
     </label>
   );
 }
-const inputStyle = { border: `1px solid ${C.line}`, padding: "8px 10px", width: "100%", fontFamily: FONT, fontSize: 14, color: C.ink, background: C.white };
+const inputStyle = { get border() { return `1px solid ${C.line}`; }, padding: "8px 10px", width: "100%", fontFamily: FONT, fontSize: 14, get color() { return C.ink; }, get background() { return C.white; } };
 
 /* ============================================================
    LANGUAGE (TH / EN) + PASSWORD MANAGEMENT
    ============================================================ */
-const LangContext = React.createContext({ lang: "th", setLang: () => {} });
+const LangContext = React.createContext({ lang: "th", setLang: () => {}, theme: "light", toggleTheme: () => {} });
+
+function ThemeToggle({ dark = true, className = "", compact = false }) {
+  const { theme, toggleTheme } = React.useContext(LangContext);
+  const isDark = theme === "dark";
+  const fg = dark ? "rgba(255,255,255,0.85)" : C.navy;
+  const border = dark ? "rgba(255,255,255,0.25)" : C.line;
+  return (
+    <button data-no-i18n onClick={toggleTheme} className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold shrink-0 ${className}`}
+      style={{ border: `1px solid ${border}`, color: fg }} title={isDark ? "เปลี่ยนเป็นธีมสว่าง" : "เปลี่ยนเป็นธีมมืด"} aria-label="สลับธีมสว่าง/มืด">
+      {isDark ? <Sun size={13} /> : <Moon size={13} />}{!compact && (isDark ? "สว่าง" : "มืด")}
+    </button>
+  );
+}
 
 function LangToggle({ dark = true, className = "" }) {
   const { lang, setLang } = React.useContext(LangContext);
@@ -782,7 +839,7 @@ function LangToggle({ dark = true, className = "" }) {
     <div data-no-i18n className={`inline-flex items-center text-xs font-semibold shrink-0 ${className}`} style={{ border: `1px solid ${border}` }} title="ภาษา / Language">
       {[["th", "ไทย"], ["en", "EN"]].map(([k, l]) => (
         <button key={k} onClick={() => setLang(k)} className="px-2.5 py-1"
-          style={{ background: lang === k ? C.crimson : "transparent", color: lang === k ? C.white : fg }}>{l}</button>
+          style={{ background: lang === k ? C.crimson : "transparent", color: lang === k ? C.onDark : fg }}>{l}</button>
       ))}
     </div>
   );
@@ -927,6 +984,8 @@ export default function App() {
   const [loginId, setLoginId] = useState("");
   const [loginErr, setLoginErr] = useState("");
   const [tab, setTab] = useState("dashboard");
+  const [theme, setTheme] = useState(() => readTheme());
+  const toggleTheme = () => setTheme((t) => { const n = t === "dark" ? "light" : "dark"; applyTheme(n); return n; });
   const [loading, setLoading] = useState(true);
 
   const [items, setItems] = useState(seedItems());
@@ -1077,13 +1136,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loading, borrows.length, tasks.length]);
 
-  if (!user) return <LangContext.Provider value={{ lang, setLang }}><LoginScreen loginId={loginId} setLoginId={setLoginId} onLogin={handleLogin} err={loginErr} /></LangContext.Provider>;
+  if (!user) return <LangContext.Provider value={{ lang, setLang, theme, toggleTheme }}><LoginScreen loginId={loginId} setLoginId={setLoginId} onLogin={handleLogin} err={loginErr} /></LangContext.Provider>;
 
   const nav = NAV[user.role];
 
   return (
-    <LangContext.Provider value={{ lang, setLang }}>
-    <div className="app-shell app-shell-auth" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
+    <LangContext.Provider value={{ lang, setLang, theme, toggleTheme }}>
+    <div key={theme} className="app-shell app-shell-auth" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
       <Sidebar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
       <div className="app-shell-main-col">
         <TopBar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
@@ -1141,7 +1200,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           <LangToggle />
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
-          <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.white }}>Contact</span>
+          <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.onDark }}>Contact</span>
         </nav>
         <LangToggle className="min-[1080px]:hidden ml-auto mr-1" />
         <button onClick={() => setNavOpen((v) => !v)} className="min-[1080px]:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
@@ -1151,7 +1210,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           <div className="min-[1080px]:hidden absolute top-full left-0 right-0 z-20 flex flex-col" style={{ background: "#2a2a2c", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
             <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
             <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
-            <span className="mx-5 my-2 px-5 py-2 text-sm font-semibold text-center" style={{ background: C.crimson, color: C.white }}>Contact</span>
+            <span className="mx-5 my-2 px-5 py-2 text-sm font-semibold text-center" style={{ background: C.crimson, color: C.onDark }}>Contact</span>
           </div>
         )}
       </header>
@@ -1183,14 +1242,14 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         {/* login column */}
         <div className="relative z-10 flex-1 flex flex-col justify-center px-5 sm:px-6 min-[1080px]:px-14 py-5 min-[1080px]:pt-16 min-[1080px]:pb-10">
           <h1 className="text-4xl min-[1080px]:text-6xl tracking-tight min-[1080px]:whitespace-nowrap mb-6 min-[1080px]:mb-10 shrink-0 text-center min-[1080px]:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
-            <span style={{ color: C.white }}>ACT</span> SPORT CENTER
+            <span style={{ color: C.onDark }}>ACT</span> SPORT CENTER
           </h1>
           <div className="flex items-center justify-center min-[1080px]:justify-start">
           <div className="w-full max-w-md">
             <div className="flex items-center gap-3 mb-5 justify-center text-center min-[1080px]:justify-start min-[1080px]:text-left">
               <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
               <div>
-                <div className="text-lg font-semibold" style={{ color: C.white }}>ACT SportHub</div>
+                <div className="text-lg font-semibold" style={{ color: C.onDark }}>ACT SportHub</div>
                 <div className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>ลงทะเบียนเข้าใช้งานด้วยรหัสประจำตัวครู</div>
               </div>
             </div>
@@ -1202,7 +1261,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
               boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1), 0 0 40px rgba(200,30,58,0.18)",
             }}>
               <div className="mb-4">
-                <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Username</label>
+                <label className="block text-sm font-semibold mb-1.5" style={{ color: C.onDark }}>Username</label>
                 <div className="relative">
                   <User size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
                   <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
@@ -1212,12 +1271,12 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                     style={{
                       width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
                       background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
-                      color: C.white, outline: "none",
+                      color: C.onDark, outline: "none",
                     }} />
                 </div>
               </div>
               <div className="mb-6">
-                <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Password</label>
+                <label className="block text-sm font-semibold mb-1.5" style={{ color: C.onDark }}>Password</label>
                 <div className="relative">
                   <Lock size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
                   <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
@@ -1226,7 +1285,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                     style={{
                       width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
                       background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
-                      color: C.white, outline: "none",
+                      color: C.onDark, outline: "none",
                     }} />
                 </div>
               </div>
@@ -1239,7 +1298,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                   style={{
                     minHeight: 48,
                     background: "linear-gradient(135deg,#FF8A3D,#E8641A)",
-                    color: C.white,
+                    color: C.onDark,
                     boxShadow: "0 0 18px rgba(232,100,26,0.55), 0 4px 10px rgba(0,0,0,0.3)",
                   }}>
                   Login
@@ -1272,7 +1331,7 @@ function Sidebar({ user, nav, tab, setTab, onLogout }) {
       <button onClick={() => setTab("profile")} className="mx-4 mt-4 mb-2 p-3 flex items-center gap-3 text-left shrink-0"
         style={{ background: tab === "profile" ? C.crimson : "rgba(255,255,255,0.05)" }}>
         <div className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center shrink-0" style={{ background: meta.tint }}>
-          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={15} color={C.white} />}
+          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={15} color={C.onDark} />}
         </div>
         <div className="min-w-0">
           <div className="text-white text-xs font-bold truncate">{user.name}</div>
@@ -1289,7 +1348,7 @@ function Sidebar({ user, nav, tab, setTab, onLogout }) {
                 <button key={key} onClick={() => setTab(key)}
                   className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
                   style={{
-                    color: active ? C.white : "#AEB8D6",
+                    color: active ? C.onDark : "#AEB8D6",
                     background: active ? "rgba(255,255,255,0.08)" : "transparent",
                     borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
                   }}>
@@ -1301,10 +1360,10 @@ function Sidebar({ user, nav, tab, setTab, onLogout }) {
         ))}
       </nav>
       <div className="px-5 py-4 shrink-0 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-        <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
+        <button onClick={onLogout} className="flex items-center gap-2 text-xs whitespace-nowrap" style={{ color: "#93A0C4" }}>
           <LogOut size={13} /> ออกจากระบบ
         </button>
-        <LangToggle />
+        <div className="flex items-center gap-1.5"><ThemeToggle compact /><LangToggle /></div>
       </div>
     </aside>
   );
@@ -1331,7 +1390,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
           <div className="text-[11px] font-semibold tracking-wide truncate" style={{ color: meta.tint }}>{meta.dash}</div>
         </div>
         <button onClick={() => setTab("profile")} className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden" style={{ background: meta.tint }} aria-label="โปรไฟล์">
-          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={15} color={C.white} />}
+          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={15} color={C.onDark} />}
         </button>
       </header>
       {user.role === "L4" && (
@@ -1359,7 +1418,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
                       <button key={key} onClick={() => { setTab(key); setDrawer(false); }}
                         className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
                         style={{
-                          color: active ? C.white : "#AEB8D6",
+                          color: active ? C.onDark : "#AEB8D6",
                           background: active ? "rgba(255,255,255,0.08)" : "transparent",
                           borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
                         }}>
@@ -1371,10 +1430,10 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
               ))}
             </nav>
             <div className="px-5 py-4 shrink-0 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
-              <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
+              <button onClick={onLogout} className="flex items-center gap-2 text-xs whitespace-nowrap" style={{ color: "#93A0C4" }}>
                 <LogOut size={13} /> ออกจากระบบ
               </button>
-              <LangToggle />
+              <div className="flex items-center gap-1.5"><ThemeToggle compact /><LangToggle /></div>
             </div>
           </div>
           <div className="flex-1" style={{ background: "rgba(0,0,0,0.5)" }} />
@@ -1520,7 +1579,7 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <StatCard label="งานที่เปิดอยู่ (ทั้งองค์กร)" value={orgKpis.activeTasks} sub={orgKpis.unassigned > 0 ? `${orgKpis.unassigned} ยังไม่ระบุผู้รับผิดชอบ` : "มอบหมายครบทุกงาน"} tone="navy" icon={ClipboardList} />
-        <StatCard label="งานเกินกำหนด (ของฉัน)" value={taskCounts.overdue} tone="crimson" icon={AlertTriangle} />
+        <StatCard label="งานเกินกำหนด (ของฉัน)" value={taskCounts.overdue} tone="crimson" icon={AlertTriangle} onClick={() => setTab("tasks")} sub={taskCounts.overdue ? "คลิกเพื่อดูรายการ" : undefined} />
         <StatCard label="ครบกำหนดวันนี้" value={taskCounts.today} tone="gold" icon={Clock} />
         <StatCard label="เสร็จแล้ว (ของฉัน)" value={taskCounts.completed} tone="ok" icon={CheckCircle2} />
       </div>
@@ -1576,12 +1635,12 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
         </div>
       </div>
 
-      <div className="p-4" style={{ background: C.badBg, border: `1px solid #E9B9C1` }}>
+      <div className="p-4" style={{ background: C.badBg, border: `1px solid ${C.badLine}` }}>
         <div className="flex items-start gap-3">
           <AlertTriangle size={18} style={{ color: C.crimson, marginTop: 2 }} />
           <div>
             <div className="text-sm font-bold" style={{ color: C.crimsonDeep }}>คำแนะนำเชิงบริหาร</div>
-            <p className="text-sm mt-1" style={{ color: "#5B2430" }}>
+            <p className="text-sm mt-1" style={{ color: C.crimsonDeep }}>
               หมวด <b>{byCat[0]?.cat}</b> มีอัตราชำรุดสูงสุด ({byCat[0]?.damaged} ชิ้น) — แนะนำให้พิจารณา
               ซ่อม/จัดซื้อทดแทน และตรวจสอบ {k.watch} รายการที่มีของชำรุดปนอยู่กับของปกติในทะเบียน
             </p>
@@ -1601,7 +1660,7 @@ function AttentionAlert({ overdue = [], today = [], critical = [], onOpen }) {
     { key: "critical", label: "งานวิกฤต", icon: "⚠️", tasks: critical },
   ].filter((g) => g.tasks.length > 0);
   return (
-    <div className="mb-4" style={{ background: C.badBg, border: `1px solid #E9B9C1` }}>
+    <div className="mb-4" style={{ background: C.badBg, border: `1px solid ${C.badLine}` }}>
       <button onClick={() => setOpen((v) => !v)} className="w-full text-left p-4 flex items-start gap-2">
         <AlertTriangle size={16} style={{ color: C.crimson, marginTop: 2 }} />
         <div className="flex-1 min-w-0">
@@ -1609,10 +1668,10 @@ function AttentionAlert({ overdue = [], today = [], critical = [], onOpen }) {
             <h3 className="text-sm font-bold" style={{ color: C.crimsonDeep }}>ATTENTION REQUIRED — ต้องการความสนใจ</h3>
             <ChevronDown size={16} style={{ color: C.crimsonDeep, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
           </div>
-          <div className="flex flex-wrap gap-4 text-sm mt-1" style={{ color: "#5B2430" }}>
+          <div className="flex flex-wrap gap-4 text-sm mt-1" style={{ color: C.crimsonDeep }}>
             {groups.map((g) => <span key={g.key}>{g.icon} {g.tasks.length} {g.label}</span>)}
           </div>
-          {!open && <div className="text-[11px] mt-1" style={{ color: "#7B3F4A" }}>คลิกเพื่อดูรายการทั้งหมด</div>}
+          {!open && <div className="text-[11px] mt-1" style={{ color: C.slate }}>คลิกเพื่อดูรายการทั้งหมด</div>}
         </div>
       </button>
       {open && (
@@ -1894,7 +1953,7 @@ function ItemImagePopup({ item, onClose, editable, onUploaded }) {
           {editable && (
             <button onClick={pick} disabled={uploading}
               className="absolute bottom-2 right-2 z-10 px-2.5 py-1 text-xs font-medium flex items-center gap-1"
-              style={{ background: "rgba(0,0,0,0.55)", color: C.white, border: "1px solid rgba(255,255,255,0.3)" }}>
+              style={{ background: "rgba(0,0,0,0.55)", color: C.onDark, border: "1px solid rgba(255,255,255,0.3)" }}>
               <Plus size={12} /> {uploading ? "กำลังอัปโหลด..." : item.imageUrl ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
             </button>
           )}
@@ -1985,10 +2044,10 @@ const ROOM_OPEN_HOURS_PER_WEEK = 40;
 
 // ตัวอักษรมาตรฐานของหน้าสถานที่ — ขนาดเดียวกันทุกระดับ
 const FT = {
-  label: { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate },
-  title: { fontSize: 15, fontWeight: 700, color: C.ink },
-  body: { fontSize: 13, color: C.ink },
-  meta: { fontSize: 12, color: C.slate },
+  get label() { return { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate }; },
+  get title() { return { fontSize: 15, fontWeight: 700, color: C.ink }; },
+  get body() { return { fontSize: 13, color: C.ink }; },
+  get meta() { return { fontSize: 12, color: C.slate }; },
   num: { fontSize: 24, fontWeight: 700, lineHeight: 1.1 },
 };
 
@@ -2606,7 +2665,7 @@ function StaffProfileView({ person, schedule = [], tasks = [], user, onBack, set
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{person.name}</h1>
-              {person.level && <Pill fg={lvl?.tint || C.navy} bg="#F2F3F7">{lvl?.label || person.level}</Pill>}
+              {person.level && <Pill fg={lvl?.tint || C.navy} bg={C.paper}>{lvl?.label || person.level}</Pill>}
               {isMe && <Pill fg={C.ok} bg={C.okBg}>คุณ</Pill>}
             </div>
             <div className="mt-1" style={{ ...body, fontWeight: 600 }}>{person.role || "บุคลากร"}</div>
@@ -2791,7 +2850,7 @@ function StaffDirectory({ staff, schedule = [], tasks = [], setStaffList, user, 
             <div className="text-xs mb-1" style={{ color: C.slate }}>{s.role || "-"}</div>
             <div className="flex items-center justify-between">
               {s.phone && <div className="text-xs font-mono" style={{ color: C.navySoft }}>{s.phone}</div>}
-              {s.level && <Pill fg={ROLE_META[s.level]?.tint || C.navy} bg="#F2F3F7">{s.level}</Pill>}
+              {s.level && <Pill fg={ROLE_META[s.level]?.tint || C.navy} bg={C.paper}>{s.level}</Pill>}
             </div>
           </div>
         ))}
@@ -3110,7 +3169,7 @@ function SportScheduleBoard({ rows }) {
               style={!sport ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate, border: `1px solid ${C.line}` }}>ทั้งหมด</button>
             {sportSummary.map((x) => (
               <button key={x.name} onClick={() => setSport(sport === x.name ? "" : x.name)} className="px-2.5 py-1.5 text-left"
-                style={sport === x.name ? { background: C.crimson, color: C.white } : { background: C.paper, color: C.ink, border: `1px solid ${C.line}` }}>
+                style={sport === x.name ? { background: C.crimson, color: C.onDark } : { background: C.paper, color: C.ink, border: `1px solid ${C.line}` }}>
                 <div className="text-xs font-bold">{x.name} <span style={{ opacity: 0.75 }}>· {x.periods} คาบ/สัปดาห์</span></div>
                 <div className="text-[10px]" style={{ opacity: 0.8 }}>{[...x.teachers].join(", ")}{x.rooms.size ? ` · ${[...x.rooms].join(", ")}` : ""}</div>
               </button>
@@ -3122,7 +3181,7 @@ function SportScheduleBoard({ rows }) {
       <div className="flex gap-1.5 mb-3 overflow-x-auto">
         {dayList.map((d) => (
           <button key={d} onClick={() => setDay(d)} className="px-3 py-1.5 text-xs font-semibold shrink-0"
-            style={d === day ? { background: dayColor(d).bar, color: C.white } : { background: dayColor(d).bg, color: dayColor(d).fg, border: `1px solid ${dayColor(d).bar}` }}>
+            style={d === day ? { background: dayColor(d).bar, color: C.onDark } : { background: dayColor(d).bg, color: dayColor(d).fg, border: `1px solid ${dayColor(d).bar}` }}>
             {d} <span style={{ opacity: 0.7 }}>({countOf(d)})</span>
           </button>
         ))}
@@ -3693,7 +3752,7 @@ function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffL
   if (A.lowStock.length) actions.push({ tone: "warn", text: `ใกล้หมด (ต่ำกว่าจุดเตือน) ${A.lowStock.length} รายการ`, tab: "inventory" });
   if (!pmSchedule.length) actions.push({ tone: "info", text: "ยังไม่มีแผนซ่อมบำรุงล่วงหน้า (PM) — ควรตั้งรอบตรวจสนาม/สระ/ฟิตเนส", tab: "maintenance" });
   A.quality.filter((q) => q.pct < 50).forEach((q) => actions.push({ tone: "info", text: `ข้อมูลครุภัณฑ์${q.label}เพียง ${q.pct}% — ${q.fix}`, tab: "inventory" }));
-  const toneStyle = { bad: { bg: C.badBg, fg: C.bad }, warn: { bg: C.warnBg, fg: C.warn }, info: { bg: "#EAF2FB", fg: "#1B5E8A" } };
+  const toneStyle = { bad: { bg: C.badBg, fg: C.bad }, warn: { bg: C.warnBg, fg: C.warn }, info: { bg: C.infoBg, fg: C.info } };
 
   const health = [
     { name: "ใช้งานได้", value: A.units.ok, fill: C.ok },
@@ -3732,7 +3791,7 @@ function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffL
       })()}
 
       {(() => {
-        const meta = { bad: { label: "ด่วน", color: C.bad }, warn: { label: "ควรดำเนินการ", color: C.warn }, info: { label: "ข้อแนะนำ", color: "#1B5E8A" } };
+        const meta = { bad: { label: "ด่วน", color: C.bad }, warn: { label: "ควรดำเนินการ", color: C.warn }, info: { label: "ข้อแนะนำ", color: C.info } };
         const counts = { bad: 0, warn: 0, info: 0 };
         actions.forEach((a) => { counts[a.tone] += 1; });
         const sorted = [...actions].sort((x, y) => ["bad", "warn", "info"].indexOf(x.tone) - ["bad", "warn", "info"].indexOf(y.tone));
@@ -4668,7 +4727,7 @@ function TaskDetailModal({ t, user, manager, readOnly, staffList, onClose, patch
       <div className="flex items-center gap-2 mb-4">
         <Pill fg={pm.fg} bg={pm.bg}>{pm.label}</Pill>
         <Pill fg={sm.fg} bg={sm.bg}>{sm.label}</Pill>
-        {t.taskType && <Pill fg={C.navySoft} bg="#F2F3F7">{TASK_TYPE_LABEL[t.taskType] || t.taskType}</Pill>}
+        {t.taskType && <Pill fg={C.navySoft} bg={C.paper}>{TASK_TYPE_LABEL[t.taskType] || t.taskType}</Pill>}
       </div>
       {t.description && <p className="text-sm mb-4" style={{ color: C.ink }}>{t.description}</p>}
       <div className="grid grid-cols-2 gap-3 text-xs mb-4" style={{ color: C.slate }}>
@@ -5411,7 +5470,7 @@ function BudgetView({ user, staffList, logAction }) {
 
   if (loadingB) return <div className="p-8 text-center text-sm" style={{ color: C.mute }}>กำลังโหลดข้อมูลงบประมาณ...</div>;
   if (!API_URL) return <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>โมดูลงบประมาณต้องเชื่อมต่อ Google Sheets backend ก่อนใช้งาน</div>;
-  if (err) return <div className="p-6 text-sm" style={{ color: C.crimson, background: C.badBg, border: `1px solid #E9B9C1` }}>{err}</div>;
+  if (err) return <div className="p-6 text-sm" style={{ color: C.crimson, background: C.badBg, border: `1px solid ${C.badLine}` }}>{err}</div>;
 
   const spentFor = (budgetId) => data.expenses.filter((e) => e.budgetId === budgetId && e.approvalStatus !== "ปฏิเสธ").reduce((s, e) => s + e.amount, 0);
   const totalIncome = data.income.reduce((s, i) => s + i.amount, 0);
@@ -5654,6 +5713,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   const [err, setErr] = useState("");
   const [selectedDay, setSelectedDay] = useState(null); // null = today
   const [showEditInfo, setShowEditInfo] = useState(false);
+  const [showUrgent, setShowUrgent] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const meta = ROLE_META[user.role];
 
@@ -5734,7 +5794,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
             </button>
             <button onClick={() => setShowEditInfo(true)} disabled={uploading}
               className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background: C.crimson, color: C.white, border: `2px solid ${C.white}` }} title="แก้ไขข้อมูลส่วนตัว">
+              style={{ background: C.crimson, color: C.onDark, border: `2px solid ${C.white}` }} title="แก้ไขข้อมูลส่วนตัว">
               <Pencil size={13} />
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
@@ -5743,7 +5803,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
           {err && <div className="text-xs mb-2" style={{ color: C.crimson }}>{err}</div>}
           <div className="text-base font-bold" style={{ color: C.ink }}>{user.name}</div>
           <div className="text-xs mt-1" style={{ color: C.mute }}>{user.title || "-"}</div>
-          <div className="mt-3"><Pill fg={meta.tint} bg="#F2F3F7">{meta.label}</Pill></div>
+          <div className="mt-3"><Pill fg={meta.tint} bg={C.paper}>{meta.label}</Pill></div>
         </div>
 
         {/* circular completion gauge — echoes the "Efficiency" ring style, in our palette */}
@@ -5758,6 +5818,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
         <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
           <h3 className="text-sm font-bold" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
           <div className="flex items-center gap-2">
+            <ThemeToggle dark={false} />
             <LangToggle dark={false} />
             {API_URL && <Btn variant="ghost" small icon={KeyRound} onClick={() => setShowPw(true)}>เปลี่ยนรหัสผ่าน</Btn>}
           </div>
@@ -5768,14 +5829,50 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
           <div><div className="text-xs" style={{ color: C.mute }}>ตำแหน่ง/หน้าที่</div><div className="font-medium" style={{ color: C.ink }}>{user.title || "-"}</div></div>
           <div><div className="text-xs" style={{ color: C.mute }}>ระดับสิทธิ์</div><div className="font-medium" style={{ color: C.ink }}>{user.role} — {meta.label}</div></div>
         </div>
-        {(myOverdue > 0 || myToday > 0) && (
-          <div className="mt-4 p-3 flex items-center gap-2" style={{ background: C.badBg }}>
-            <AlertTriangle size={14} style={{ color: C.crimson }} />
-            <span className="text-xs" style={{ color: C.crimsonDeep }}>
-              {myOverdue > 0 && `${myOverdue} งานเกินกำหนด `}{myToday > 0 && `· ${myToday} งานครบกำหนดวันนี้`}
-            </span>
-          </div>
-        )}
+        {(myOverdue > 0 || myToday > 0) && (() => {
+          const urgent = myTasks.filter((t) => ["overdue", "today"].includes(taskBucket(t)))
+            .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
+          const daysLate = (d) => Math.max(0, Math.round((new Date(TODAY_ISO) - new Date(d)) / 86400000));
+          return (
+            <div className="mt-4" style={{ border: `1px solid ${C.badBg}`, background: C.badBg }}>
+              <button onClick={() => setShowUrgent((x) => !x)} className="w-full p-3 flex items-center gap-2 text-left" aria-expanded={showUrgent}>
+                <AlertTriangle size={14} style={{ color: C.crimson }} />
+                <span className="flex-1" style={{ fontSize: 13, fontWeight: 600, color: C.crimsonDeep }}>
+                  {myOverdue > 0 && `${myOverdue} งานเกินกำหนด`}{myOverdue > 0 && myToday > 0 && " · "}{myToday > 0 && `${myToday} งานครบกำหนดวันนี้`}
+                </span>
+                <span className="flex items-center gap-1" style={{ fontSize: 12, color: C.crimsonDeep }}>{showUrgent ? "ซ่อน" : "ดูรายการ"}<ChevronDown size={14} style={{ transform: showUrgent ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></span>
+              </button>
+              {showUrgent && (
+                <div style={{ background: C.white, borderTop: `1px solid ${C.line}` }}>
+                  {urgent.map((t) => {
+                    const late = taskBucket(t) === "overdue";
+                    const pr = { CRITICAL: ["วิกฤต", C.bad], HIGH: ["สูง", C.warn], NORMAL: ["ปกติ", C.slate], LOW: ["ต่ำ", C.mute] }[t.priority] || [t.priority, C.slate];
+                    return (
+                      <button key={t.id} onClick={() => setTab("tasks")} className="w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-gray-50" style={{ borderBottom: `1px solid ${C.line}`, borderLeft: `3px solid ${late ? C.crimson : C.warn}` }}>
+                        <div className="min-w-0 flex-1">
+                          <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{t.title || "(ไม่มีชื่องาน)"}</div>
+                          <div className="mt-0.5 flex flex-wrap gap-x-3" style={{ fontSize: 12, color: C.slate }}>
+                            <span>กำหนด {t.dueDate || "-"}{t.dueTime ? ` ${t.dueTime}` : ""}</span>
+                            {t.location && <span>{t.location}</span>}
+                            {t.createdBy && <span>มอบหมายโดย {t.createdBy}</span>}
+                          </div>
+                          {t.description && <div className="mt-0.5 truncate" style={{ fontSize: 12, color: C.mute }}>{t.description}</div>}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div style={{ fontSize: 12, fontWeight: 700, color: late ? C.crimson : C.warn }}>{late ? `เกิน ${daysLate(t.dueDate)} วัน` : "วันนี้"}</div>
+                          <div style={{ fontSize: 11, color: pr[1] }}>ความสำคัญ: {pr[0]}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  <div className="px-3 py-2 flex justify-end">
+                    <button onClick={() => setTab("tasks")} className="flex items-center gap-1 hover:underline" style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>ไปหน้างานทั้งหมด <ChevronRight size={13} /></button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* week strip + day's tasks — echoes the date-strip task-app reference, in our palette */}
@@ -6063,7 +6160,7 @@ function CompletionRing({ pct }) {
       <circle cx="44" cy="44" r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" />
       <circle cx="44" cy="44" r={r} fill="none" stroke={C.accent} strokeWidth="8" strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={offset} transform="rotate(-90 44 44)" />
-      <text x="44" y="49" textAnchor="middle" fontSize="20" fontWeight="700" fill={C.white} fontFamily={FONT}>{pct}%</text>
+      <text x="44" y="49" textAnchor="middle" fontSize="20" fontWeight="700" fill={C.onDark} fontFamily={FONT}>{pct}%</text>
     </svg>
   );
 }

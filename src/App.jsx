@@ -1190,7 +1190,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const [password, setPassword] = useState("");
   const submit = () => onLogin(loginId, password);
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
+    <div className="flex flex-col overflow-hidden" style={{ height: "100dvh", fontFamily: FONT, background: "#0A0A0A" }}>
       {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width */}
       <header className="relative shrink-0 flex items-center justify-between px-5 min-[1080px]:px-10 py-3 min-[1080px]:py-4"
         style={{ background: "linear-gradient(90deg,#2a2a2c,#3a3a3c 40%,#4a4a4c)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
@@ -1217,7 +1217,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
       </header>
 
       {/* hero — mascot left, login card right on desktop; stacked on mobile */}
-      <div className="flex-1 relative flex flex-col min-[1080px]:flex-row overflow-y-auto overflow-x-hidden" style={{
+      <div className="flex-1 min-h-0 relative flex flex-col min-[1080px]:flex-row overflow-y-auto overflow-x-hidden" style={{
         background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
       }}>
         <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
@@ -1236,18 +1236,18 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         }} />
 
         {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
-        <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full">
-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" style={{ transform: "scale(0.9)", transformOrigin: "left bottom" }} />
+        <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full items-start">
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left" style={{ transform: "scale(0.9)", transformOrigin: "left top" }} />
         </div>
 
         {/* login column */}
-        <div className="relative z-10 flex-1 flex flex-col justify-center px-5 sm:px-6 min-[1080px]:px-14 py-5 min-[1080px]:pt-16 min-[1080px]:pb-10">
-          <h1 className="text-5xl min-[1080px]:text-7xl min-[1080px]:whitespace-nowrap mb-6 min-[1080px]:mb-10 shrink-0 text-center min-[1080px]:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.45)", fontFamily: "'Teko', 'Anton', sans-serif", fontWeight: 700, letterSpacing: "0.02em", lineHeight: 0.95, transform: "skewX(-9deg)", transformOrigin: "left center" }}>
+        <div className="relative z-10 flex-1 flex flex-col justify-center px-5 sm:px-6 min-[1080px]:px-14" style={{ paddingTop: "clamp(10px, 5vh, 56px)", paddingBottom: "clamp(10px, 4vh, 40px)" }}>
+          <h1 className="whitespace-nowrap shrink-0 text-center min-[1080px]:text-left" style={{ fontSize: "clamp(2.25rem, min(10vw, 8vh), 5.25rem)", marginBottom: "clamp(14px, 4vh, 40px)", color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.45)", fontFamily: "'Teko', 'Anton', sans-serif", fontWeight: 700, letterSpacing: "0.02em", lineHeight: 0.95, transform: "skewX(-9deg)", transformOrigin: "left center" }}>
             <span style={{ color: C.onDark }}>ACT</span> SPORT CENTER
           </h1>
           <div className="flex items-center justify-center min-[1080px]:justify-start">
           <div className="w-full max-w-md">
-            <div className="flex items-center gap-3 mb-5 justify-center text-center min-[1080px]:justify-start min-[1080px]:text-left">
+            <div className="flex items-center gap-3 justify-center text-center min-[1080px]:justify-start min-[1080px]:text-left" style={{ marginBottom: "clamp(10px, 2.5vh, 20px)" }}>
               <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
               <div>
                 <div className="text-lg font-semibold" style={{ color: C.onDark }}>ACT SportHub</div>
@@ -1255,7 +1255,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
               </div>
             </div>
 
-            <div className="relative p-6" style={{
+            <div className="relative" style={{
+              padding: "clamp(16px, 3vh, 24px)",
               background: "linear-gradient(160deg, rgba(158,27,43,0.35), rgba(30,30,32,0.55))",
               backdropFilter: "blur(12px)",
               border: "1px solid rgba(232,100,26,0.35)",
@@ -1307,7 +1308,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
               </div>
             </div>
 
-            <div className="mt-6 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
+            <div className="text-xs leading-relaxed" style={{ marginTop: "clamp(10px, 3vh, 24px)", color: "rgba(255,255,255,0.35)" }}>
               © 2026 Assumption College Thonburi<br />ACT Sport Center Resource Intelligence · v1.0.0
               <br />Developer : P.Prayoon-Anutep
             </div>

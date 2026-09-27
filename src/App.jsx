@@ -1410,9 +1410,9 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
     return Object.values(m).sort((a, b) => b.damaged - a.damaged).slice(0, 8);
   }, [items]);
   const pieData = [
-    { name: "Normal", value: k.normal, fill: C.ok },
-    { name: "Damaged", value: k.damaged, fill: C.crimson },
-    { name: "Borrowed", value: k.activeBorrows, fill: C.warn },
+    { name: "ปกติ", value: k.normal, fill: C.ok },
+    { name: "ชำรุด", value: k.damaged, fill: C.crimson },
+    { name: "ยืมอยู่", value: k.activeBorrows, fill: C.warn },
   ].filter((entry) => entry.value > 0);
 
   const topDamaged = useMemo(() => [...items].filter((i) => i.damaged > 0).sort((a, b) => b.damaged - a.damaged).slice(0, 6), [items]);
@@ -1496,30 +1496,27 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-1" style={{ color: C.navy }}>สุขภาพครุภัณฑ์โดยรวม</h3>
           <div className="text-xs mb-2" style={{ color: C.mute }}>สัดส่วนสุขภาพครุภัณฑ์โดยรวม</div>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={220}>
             <PieChart width={400} height={300}>
               <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" nameKey="name">
                 {pieData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
               </Pie>
-              <Tooltip />
-              <Legend />
+              <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} />
+              <Legend iconSize={10} wrapperStyle={{ fontSize: 12, fontFamily: FONT }} />
 </PieChart>
           </ResponsiveContainer>
-          <div className="flex justify-center gap-3 text-[11px] mt-1" style={{ color: C.slate }}>
-            <span>🟢 ปกติ</span><span>🔴 ชำรุด</span><span>🟡 ยืมอยู่</span>
-          </div>
         </div>
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold" style={{ color: C.navy }}>สุขภาพทรัพยากรแยกตามหมวด (Top 8 ชำรุดสูงสุด)</h3>
           </div>
-          <ResponsiveContainer width="100%" height={230}>
+          <ResponsiveContainer width="100%" height={260}>
             <BarChart width={400} height={300} data={byCat}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="cat" angle={0} textAnchor="middle" height={60} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
+              <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+              <XAxis dataKey="cat" interval={0} angle={-30} textAnchor="end" height={78} tickMargin={4} tick={{ fontSize: 11, fontFamily: FONT, fill: C.slate }} axisLine={{ stroke: C.line }} tickLine={false} />
+              <YAxis width={40} tick={{ fontSize: 11, fontFamily: FONT, fill: C.slate }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} />
+              <Legend verticalAlign="top" align="right" iconSize={10} wrapperStyle={{ fontSize: 12, fontFamily: FONT, paddingBottom: 8 }} />
               <Bar dataKey="ok" name="ปกติ" fill={C.ok} />
               <Bar dataKey="damaged" name="ชำรุด" fill={C.crimson} />
 </BarChart>
@@ -2115,7 +2112,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
             </div>
             <div className="flex items-center gap-2">
               <RoomStatusPill loc={room} />
-              <Btn small variant="ghost" icon={ArrowLeftRight} onClick={() => setRoomName(null)}>กลับไปเลือกห้อง</Btn>
+              <Btn small variant="ghost" onClick={() => setRoomName(null)}>← กลับไปเลือกห้อง</Btn>
             </div>
           </div>
           <div className="mt-3 pt-3" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
@@ -2271,7 +2268,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
                   <div className="w-10 h-10 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}><Ico size={18} strokeWidth={1.5} style={{ color: C.navy }} /></div>
                   <div className="min-w-0"><div className="truncate" style={FT.title}>{z.name}</div><div style={FT.meta}>{z.rooms.length} ห้อง/สนาม</div></div>
                 </div>
-                {z.inUse > 0 ? <Pill fg={C.crimsonDeep} bg={C.badBg}>ใช้งาน {z.inUse}</Pill> : <Pill fg={C.ok} bg={C.okBg}>ว่างทั้งหมด</Pill>}
+                <span className="shrink-0 whitespace-nowrap">{z.inUse > 0 ? <Pill fg={C.crimsonDeep} bg={C.badBg}>ใช้งาน {z.inUse}</Pill> : <Pill fg={C.ok} bg={C.okBg}>ว่างทั้งหมด</Pill>}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-3">
                 <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{z.count}</div></div>

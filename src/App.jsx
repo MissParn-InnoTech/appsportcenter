@@ -1058,8 +1058,8 @@ export default function App() {
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} repairs={repairs} pmSchedule={pmSchedule} docs={docs} schedule={allSchedule} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} setTab={setTab} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-          {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} repairs={repairs} setTab={setTab} />}
-          {tab === "staff" && <StaffDirectory staff={staffList} schedule={allSchedule} setStaffList={setStaffList} user={user} logAction={logAction} />}
+          {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} repairs={repairs} damages={damages} tasks={tasks} setTab={setTab} />}
+          {tab === "staff" && <StaffDirectory staff={staffList} schedule={allSchedule} tasks={tasks} setStaffList={setStaffList} user={user} logAction={logAction} setTab={setTab} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
           {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
@@ -1935,146 +1935,508 @@ function pickFacilityIcon(name) {
   return Landmark;
 }
 
-function Facility({ items, schedule = [], pmSchedule = [], repairs = [], setTab }) {
-  const [selectedLocation, setSelectedLocation] = useState(null);
+// กลุ่มสถานที่ (โซน) → ห้อง — แก้การจัดกลุ่มได้ที่นี่ที่เดียว (อ้างอิง code จาก LOCATIONS)
+const FACILITY_ZONES = [
+  { key: "office", name: "สำนักงานและห้องเก็บของ", rooms: ["OFF-SPORT", "ACT-ACTIVITY", "TTN-STORE"] },
+  { key: "indoor", name: "ห้องกีฬาในร่ม", rooms: ["TTN-ROOM", "DAN-ROOM", "TKD-ROOM-1", "TKD-ROOM-2", "CLB-WALL"] },
+  { key: "fitness", name: "ฟิตเนสและสระว่ายน้ำ", rooms: ["FIT-CENTER", "SWM-POOL"] },
+  { key: "golf", name: "กอล์ฟ", rooms: ["GLF-RANGE", "GLF-CHIP"] },
+  { key: "outdoor", name: "สนามกลางแจ้ง", rooms: ["TEN-COURT", "FUT-COURT", "FBL-FIELD", "BKB-COURT"] },
+  { key: "arena", name: "อารีน่า", rooms: ["ARENA"] },
+];
+const OTHER_ZONE = { key: "other", name: "สถานที่อื่นๆ (ยังไม่จัดกลุ่ม)" };
+
+// ตัวอักษรมาตรฐานของหน้าสถานที่ — ขนาดเดียวกันทุกระดับ
+const FT = {
+  label: { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate },
+  title: { fontSize: 15, fontWeight: 700, color: C.ink },
+  body: { fontSize: 13, color: C.ink },
+  meta: { fontSize: 12, color: C.slate },
+  num: { fontSize: 24, fontWeight: 700, lineHeight: 1.1 },
+};
+
+function FacStat({ label, value, color = C.ink, sub }) {
+  return (
+    <div className="p-3" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+      <div style={FT.label}>{label}</div>
+      <div className="mt-1" style={{ ...FT.num, color }}>{value}</div>
+      {sub && <div className="mt-0.5" style={FT.meta}>{sub}</div>}
+    </div>
+  );
+}
+
+function Crumbs({ parts }) {
+  return (
+    <div className="flex items-center flex-wrap gap-1 mb-3" style={FT.meta}>
+      {parts.map((p, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <ChevronRight size={12} style={{ color: C.mute }} />}
+          {p.onClick ? (
+            <button onClick={p.onClick} className="underline-offset-2 hover:underline" style={{ color: C.navy, fontWeight: 600 }}>{p.label}</button>
+          ) : (
+            <span style={{ color: C.ink, fontWeight: 600 }}>{p.label}</span>
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function RoomStatusPill({ loc }) {
+  return loc.current ? (
+    <Pill fg={C.crimsonDeep} bg={C.badBg}><span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: C.crimson }} />กำลังใช้งาน</Pill>
+  ) : (
+    <Pill fg={C.ok} bg={C.okBg}>ว่าง</Pill>
+  );
+}
+
+function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages = [], tasks = [], setTab }) {
+  const [zoneKey, setZoneKey] = useState(null);
+  const [roomName, setRoomName] = useState(null);
   const [detailTab, setDetailTab] = useState("items");
+  const [itemQ, setItemQ] = useState("");
+  const topRef = useRef(null);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60000); // อัปเดตสถานะทุก 1 นาที
     return () => clearInterval(t);
   }, []);
+  useEffect(() => { topRef.current?.scrollIntoView({ block: "start" }); }, [zoneKey, roomName]);
   const nowDay = THAI_DAY_NOW[now.getDay()];
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   const byLoc = useMemo(() => {
     const m = {};
-    LOCATIONS.forEach((l) => { m[l.name] = { ...l, count: 0, ok: 0, damaged: 0 }; });
+    LOCATIONS.forEach((l) => { m[l.name] = { ...l, count: 0, ok: 0, damaged: 0, lost: 0 }; });
     items.forEach((i) => {
-      if (!m[i.loc]) m[i.loc] = { name: i.loc, owner: i.owner, count: 0, ok: 0, damaged: 0 };
-      m[i.loc].count += 1; m[i.loc].ok += i.normal; m[i.loc].damaged += i.damaged;
+      if (!i.loc) return;
+      if (!m[i.loc]) m[i.loc] = { name: i.loc, owner: i.owner, count: 0, ok: 0, damaged: 0, lost: 0 };
+      m[i.loc].count += 1; m[i.loc].ok += i.normal; m[i.loc].damaged += i.damaged; m[i.loc].lost += i.lost || 0;
     });
 
-    // สถานะสด: กำลังใช้งานอยู่ตอนนี้หรือไม่ ตามตารางสอน/ตารางใช้ห้องของสถานที่นั้น
     Object.values(m).forEach((loc) => {
       const todaysRows = schedule.filter((s) => s.loc === loc.name && s.day === nowDay);
-      const current = todaysRows.find((s) => {
+      loc.current = todaysRows.find((s) => {
         const start = toMinutes_(s.start), end = toMinutes_(s.end);
         return start !== null && end !== null && nowMin >= start && nowMin < end;
-      });
-      const next = todaysRows
+      }) || null;
+      loc.next = todaysRows
         .filter((s) => { const start = toMinutes_(s.start); return start !== null && start > nowMin; })
-        .sort((a, b) => toMinutes_(a.start) - toMinutes_(b.start))[0];
-      loc.current = current || null;
-      loc.next = next || null;
-
-      // สถิติการใช้งาน: จำนวนคาบ/สัปดาห์ ที่สถานที่นี้ถูกใช้ จากตารางทั้งหมด (ไม่ใช่แค่วันนี้)
+        .sort((a, b) => toMinutes_(a.start) - toMinutes_(b.start))[0] || null;
+      loc.todayRows = [...todaysRows].sort((a, b) => (toMinutes_(a.start) ?? 0) - (toMinutes_(b.start) ?? 0));
       const weeklyRows = schedule.filter((s) => s.loc === loc.name);
       loc.periodsPerWeek = weeklyRows.length;
       loc.hoursPerWeek = weeklyRows.reduce((sum, s) => sum + durationHrs(s.start, s.end), 0);
-
-      // นัดซ่อมบำรุงครั้งถัดไป: จาก pmSchedule ที่อ้างอิงชื่อสถานที่นี้ เลือกวันที่ใกล้ที่สุดที่ยังไม่ผ่าน
       const upcoming = pmSchedule
         .filter((p) => p.refName && p.refName.includes(loc.name) && p.nextDate)
         .sort((a, b) => (a.nextDate < b.nextDate ? -1 : 1))
         .find((p) => p.nextDate >= TODAY_ISO) || pmSchedule.find((p) => p.refName && p.refName.includes(loc.name));
       loc.nextMaintenance = upcoming || null;
     });
-
-    return Object.values(m);
+    return m;
   }, [items, schedule, pmSchedule, nowDay, nowMin]);
 
-  const maxPeriods = Math.max(1, ...byLoc.map((l) => l.periodsPerWeek || 0));
+  const zones = useMemo(() => {
+    const byCode = {};
+    Object.values(byLoc).forEach((l) => { if (l.code) byCode[l.code] = l; });
+    const used = new Set();
+    const list = FACILITY_ZONES.map((z) => {
+      const rooms = z.rooms.map((c) => byCode[c]).filter(Boolean);
+      rooms.forEach((r) => used.add(r.name));
+      return { ...z, rooms };
+    });
+    const others = Object.values(byLoc).filter((l) => !used.has(l.name));
+    if (others.length) list.push({ ...OTHER_ZONE, rooms: others });
+    return list.map((z) => ({
+      ...z,
+      count: z.rooms.reduce((s, r) => s + r.count, 0),
+      ok: z.rooms.reduce((s, r) => s + r.ok, 0),
+      damaged: z.rooms.reduce((s, r) => s + r.damaged, 0),
+      inUse: z.rooms.filter((r) => r.current).length,
+      periods: z.rooms.reduce((s, r) => s + (r.periodsPerWeek || 0), 0),
+    }));
+  }, [byLoc]);
 
-  return (
-    <div>
-      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สถานะ Real Time · ตารางใช้ห้อง · การนัดซ่อมบำรุงและสถิติ" />
-      <div className="grid grid-cols-2 gap-4">
-        {byLoc.map((l) => {
-          const inUse = !!l.current;
-          const utilPct = Math.round(((l.periodsPerWeek || 0) / maxPeriods) * 100);
-          return (
-            <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${inUse ? C.gold : (l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.ok)}` }}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  {(() => { const Ico = pickFacilityIcon(l.name); return <Ico size={16} strokeWidth={1.5} className="shrink-0" style={{ color: C.navy }} />; })()}
-                  <button className="font-bold text-sm truncate text-left" style={{ color: C.ink }} onClick={() => { setSelectedLocation(l); setDetailTab("items"); }}>{l.name}</button>
-                </div>
-                {inUse ? (
-                  <Pill fg={C.crimsonDeep} bg={C.badBg}><span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: C.crimson }} />กำลังใช้งาน</Pill>
-                ) : (
-                  <Pill fg={C.ok} bg={C.okBg}>ว่าง</Pill>
-                )}
+  const zone = zones.find((z) => z.key === zoneKey) || null;
+  const room = roomName ? byLoc[roomName] : null;
+  const goAll = () => { setZoneKey(null); setRoomName(null); };
+  const goZone = (k) => { setZoneKey(k); setRoomName(null); };
+  const openRoom = (name) => { setRoomName(name); setDetailTab("items"); setItemQ(""); };
+
+  const totalRooms = Object.keys(byLoc).length;
+  const totalInUse = Object.values(byLoc).filter((l) => l.current).length;
+  const maxPeriods = Math.max(1, ...Object.values(byLoc).map((l) => l.periodsPerWeek || 0));
+
+  /* ---------- ระดับ 3: รายละเอียดห้อง ---------- */
+  if (room) {
+    const roomItems = items.filter((it) => it.loc === room.name);
+    const codes = new Set(roomItems.map((it) => it.code));
+    const q = itemQ.trim().toLowerCase();
+    const shownItems = roomItems.filter((it) => !q || `${it.code} ${it.name} ${it.brand || ""}`.toLowerCase().includes(q));
+    const damagedItems = roomItems.filter((it) => it.damaged > 0);
+    const openDamages = damages.filter((d) => (d.location === room.name || codes.has(d.itemCode)) && !/เสร็จ|ซ่อมแล้ว|ปิด|จำหน่าย/.test(d.status || ""));
+    const roomTasks = tasks.filter((t) => (t.location === room.name || t.relatedFacility === room.name || t.relatedFacility === room.code) && t.status !== "COMPLETED" && t.status !== "CANCELLED");
+    const roomRepairs = repairs.filter((r) => r.refName?.includes(room.name) || (room.code && r.ref === room.code) || codes.has(r.ref)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const roomPm = pmSchedule.filter((p) => p.refName?.includes(room.name) || (room.code && p.ref === room.code) || codes.has(p.ref)).sort((a, b) => String(a.nextDate).localeCompare(String(b.nextDate)));
+    const maintCount = damagedItems.length + openDamages.length + roomTasks.length + roomPm.length;
+    const Ico = pickFacilityIcon(room.name);
+    const roomZone = zones.find((z) => z.rooms.some((r) => r.name === room.name));
+
+    const Block = ({ title, count, empty, children }) => (
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-2">
+          <h3 style={{ ...FT.body, fontWeight: 700 }}>{title}</h3>
+          <span style={FT.meta}>{count} รายการ</span>
+        </div>
+        {count ? <div className="space-y-2">{children}</div> : <div className="p-3 text-center" style={{ ...FT.meta, color: C.mute, border: `1px dashed ${C.line}` }}>{empty}</div>}
+      </div>
+    );
+    const Row = ({ left, sub, right, tone }) => (
+      <div className="flex items-start justify-between gap-3 p-3" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${tone || C.line}` }}>
+        <div className="min-w-0"><div style={{ ...FT.body, fontWeight: 600 }}>{left}</div>{sub && <div className="mt-0.5" style={FT.meta}>{sub}</div>}</div>
+        {right && <div className="shrink-0">{right}</div>}
+      </div>
+    );
+
+    return (
+      <div ref={topRef}>
+        <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, roomZone && { label: roomZone.name, onClick: () => goZone(roomZone.key) }, { label: room.name }].filter(Boolean)} />
+        <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-12 h-12 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+                <Ico size={22} strokeWidth={1.5} style={{ color: C.navy }} />
               </div>
-              <div className="text-xs mb-1" style={{ color: C.slate }}>ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
-              {inUse ? (
-                <div className="text-xs mb-2" style={{ color: C.crimsonDeep }}>
-                  {l.current.subject || "ใช้งาน"} · {l.current.teacher || "-"} · {l.current.start}–{l.current.end}
-                </div>
-              ) : l.next ? (
-                <div className="text-xs mb-2" style={{ color: C.slate }}>คาบถัดไปวันนี้: {l.next.start} · {l.next.subject || "-"}</div>
-              ) : (
-                <div className="text-xs mb-2" style={{ color: C.mute }}>ไม่มีคาบใช้งานวันนี้แล้ว</div>
-              )}
-
-              <div className="flex items-center justify-between text-sm mb-3">
-                <div><span className="font-bold">{l.count}</span> <span className="text-xs" style={{ color: C.mute }}>รายการ</span></div>
-                <div style={{ color: C.ok }}><span className="font-bold">{l.ok}</span> <span className="text-xs">ใช้ได้</span></div>
-                <div style={{ color: C.crimson }}><span className="font-bold">{l.damaged}</span> <span className="text-xs">ชำรุด</span></div>
-              </div>
-
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-xs mb-1" style={{ color: C.slate }}>
-                  <span>สถิติการใช้งาน</span>
-                  <span>{l.periodsPerWeek || 0} คาบ/สัปดาห์ · {l.hoursPerWeek.toFixed(1)} ชม./สัปดาห์</span>
-                </div>
-                <div className="h-1.5 w-full" style={{ background: C.line }}>
-                  <div className="h-1.5" style={{ width: `${utilPct}%`, background: C.navy }} />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 text-xs pt-2" style={{ borderTop: `1px dashed ${C.line}`, color: l.nextMaintenance ? C.warn : C.mute }}>
-                <Wrench size={12} className="shrink-0" />
-                {l.nextMaintenance
-                  ? <span>นัดซ่อมบำรุงถัดไป: <b>{l.nextMaintenance.nextDate}</b> ({l.nextMaintenance.cycle || "-"})</span>
-                  : <span>ยังไม่มีนัดซ่อมบำรุงล่วงหน้า</span>}
-                {setTab && (
-                  <button className="ml-auto underline" style={{ color: C.navy }} onClick={() => setTab("maintenance")}>ดูรายละเอียด</button>
-                )}
+              <div className="min-w-0">
+                <div style={FT.label}>{room.code || "ROOM"}</div>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{room.name}</h1>
+                <div style={FT.meta}>ผู้ดูแล: {room.owner || "ยังไม่ระบุ"}</div>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <RoomStatusPill loc={room} />
+              <Btn small variant="ghost" icon={ArrowLeftRight} onClick={() => setRoomName(null)}>กลับไปเลือกห้อง</Btn>
+            </div>
+          </div>
+          <div className="mt-3 pt-3" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
+            {room.current
+              ? <span style={{ color: C.crimsonDeep }}>ตอนนี้: {room.current.subject || "ใช้งาน"} · {room.current.teacher || "-"} · {room.current.start}–{room.current.end}</span>
+              : room.next ? <span>คาบถัดไปวันนี้: {room.next.start}–{room.next.end} · {room.next.subject || "-"} · {room.next.teacher || "-"}</span>
+              : <span>ไม่มีคาบใช้งานต่อจากนี้ในวันนี้</span>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <FacStat label="รายการครุภัณฑ์" value={room.count.toLocaleString()} sub={`${(room.ok + room.damaged + room.lost).toLocaleString()} ชิ้น`} />
+          <FacStat label="พร้อมใช้" value={room.ok.toLocaleString()} color={C.ok} sub="ชิ้น" />
+          <FacStat label="ชำรุด / สูญหาย" value={`${room.damaged} / ${room.lost}`} color={room.damaged ? C.crimson : C.ink} sub="ชิ้น" />
+          <FacStat label="การใช้ห้อง" value={room.periodsPerWeek || 0} sub={`คาบ/สัปดาห์ · ${room.hoursPerWeek.toFixed(1)} ชม.`} />
+        </div>
+
+        <div className="flex mb-4" style={{ borderBottom: `1px solid ${C.line}` }}>
+          {[["items", "ครุภัณฑ์ของห้อง", room.count], ["maintenance", "ซ่อมบำรุง", maintCount]].map(([key, label, n]) => (
+            <button key={key} className="px-4 py-2.5 flex items-center gap-2" onClick={() => setDetailTab(key)}
+              style={{ fontSize: 14, fontWeight: 600, color: detailTab === key ? C.crimson : C.slate, borderBottom: detailTab === key ? `2px solid ${C.crimson}` : "2px solid transparent", marginBottom: -1 }}>
+              {label}
+              <span className="px-1.5" style={{ fontSize: 11, background: detailTab === key ? C.badBg : C.paper, color: detailTab === key ? C.crimson : C.slate, border: `1px solid ${C.line}` }}>{n}</span>
+            </button>
+          ))}
+        </div>
+
+        {detailTab === "items" ? (
+          <div>
+            <div className="relative max-w-sm mb-3">
+              <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+              <input value={itemQ} onChange={(e) => setItemQ(e.target.value)} placeholder="ค้นหารหัส ชื่อ หรือยี่ห้อ..." style={{ ...inputStyle, paddingLeft: 32 }} />
+            </div>
+            {shownItems.length ? (
+              <div className="table-scroll" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+                <table className="w-full" style={FT.body}>
+                  <thead><tr style={{ background: C.paper }}>{["รหัส", "รายการ", "ยี่ห้อ/รุ่น", "พร้อมใช้", "ชำรุด", "สูญหาย", "สถานะ"].map((h, i) => <th key={h} className={`px-3 py-2 ${i >= 3 && i <= 5 ? "text-right" : "text-left"}`} style={FT.label}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {shownItems.map((it) => {
+                      const st = it.damaged > 0 && it.damaged >= it.normal ? ["ต้องซ่อมด่วน", C.bad, C.badBg] : it.damaged > 0 ? ["มีชำรุดบางส่วน", C.warn, C.warnBg] : ["ปกติ", C.ok, C.okBg];
+                      return (
+                        <tr key={it.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                          <td className="px-3 py-2 font-mono" style={FT.meta}>{it.code}</td>
+                          <td className="px-3 py-2">{it.name}{it.note ? <div style={{ ...FT.meta, color: C.mute }}>{it.note}</div> : null}</td>
+                          <td className="px-3 py-2" style={FT.meta}>{it.brand || "-"}</td>
+                          <td className="px-3 py-2 text-right font-semibold" style={{ color: C.ok }}>{it.normal}</td>
+                          <td className="px-3 py-2 text-right font-semibold" style={{ color: it.damaged ? C.crimson : C.mute }}>{it.damaged}</td>
+                          <td className="px-3 py-2 text-right font-semibold" style={{ color: it.lost ? C.warn : C.mute }}>{it.lost || 0}</td>
+                          <td className="px-3 py-2"><Pill fg={st[1]} bg={st[2]}>{st[0]}</Pill></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-10 text-center" style={{ ...FT.body, color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
+                {roomItems.length ? "ไม่พบรายการที่ตรงกับคำค้นหา" : "ยังไม่มีครุภัณฑ์ที่ระบุห้องนี้ — เพิ่มได้ที่หน้าครุภัณฑ์"}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-5">
+            <div>
+              <Block title="อุปกรณ์ชำรุดในห้องนี้" count={damagedItems.length} empty="ไม่มีอุปกรณ์ชำรุด">
+                {damagedItems.map((it) => <Row key={it.id} tone={C.crimson} left={it.name} sub={`${it.code} · พร้อมใช้ ${it.normal} · ชำรุด ${it.damaged}`} right={<Pill fg={C.crimson} bg={C.badBg}>ชำรุด {it.damaged}</Pill>} />)}
+              </Block>
+              <Block title="แจ้งชำรุดที่ยังไม่ปิด" count={openDamages.length} empty="ไม่มีการแจ้งชำรุดค้าง">
+                {openDamages.map((d) => <Row key={d.id} tone={C.warn} left={d.itemName} sub={`${d.date} · แจ้งโดย ${d.reporter || "-"}${d.symptom ? ` · ${d.symptom}` : ""}`} right={<Pill fg={C.warn} bg={C.warnBg}>{d.status}</Pill>} />)}
+              </Block>
+              <Block title="งานที่เกี่ยวกับห้องนี้" count={roomTasks.length} empty="ไม่มีงานค้างของห้องนี้">
+                {roomTasks.map((t) => { const s = STATUS_META[t.status] || STATUS_META.TODO; return <Row key={t.id} tone={C.navy} left={t.title} sub={`${t.assignee || "ยังไม่ระบุผู้รับผิดชอบ"}${t.dueDate ? ` · กำหนด ${t.dueDate}` : ""}`} right={<Pill fg={s.fg} bg={s.bg}>{s.label}</Pill>} />; })}
+              </Block>
+            </div>
+            <div>
+              <Block title="แผนซ่อมบำรุง (PM)" count={roomPm.length} empty="ยังไม่มีแผนซ่อมบำรุงของห้องนี้">
+                {roomPm.map((p) => <Row key={p.id} tone={p.nextDate && p.nextDate < TODAY_ISO ? C.crimson : C.ok} left={`${p.refName || room.name} · ${p.cycle || "ตรวจบำรุง"}`} sub={`ผู้รับผิดชอบ: ${p.owner || "ยังไม่ระบุ"}${p.note ? ` · ${p.note}` : ""}`} right={<span style={{ ...FT.meta, fontWeight: 700, color: p.nextDate && p.nextDate < TODAY_ISO ? C.crimson : C.ink }}>{p.nextDate || "-"}</span>} />)}
+              </Block>
+              <Block title="ประวัติการซ่อม" count={roomRepairs.length} empty="ยังไม่มีประวัติการซ่อม">
+                {roomRepairs.map((r) => <Row key={r.id} left={r.description || r.refName} sub={`${r.date || "-"} · ${r.vendor || "ไม่ระบุช่าง"} · ${r.cost.toLocaleString()} บาท`} right={<Pill fg={C.slate} bg={C.paper}>{r.status || "ไม่ระบุ"}</Pill>} />)}
+              </Block>
+              {setTab && <Btn small variant="ghost" icon={Wrench} onClick={() => setTab("maintenance")}>เปิดหน้าซ่อมบำรุงทั้งหมด</Btn>}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ---------- ระดับ 2: ห้องในสถานที่ ---------- */
+  if (zone) {
+    return (
+      <div ref={topRef}>
+        <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, { label: zone.name }]} />
+        <SectionHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์และงานซ่อมบำรุง`}
+          right={<Btn variant="ghost" onClick={goAll}>← สถานที่ทั้งหมด</Btn>} />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {zone.rooms.map((l) => {
+            const Ico = pickFacilityIcon(l.name);
+            const utilPct = Math.round(((l.periodsPerWeek || 0) / maxPeriods) * 100);
+            const bad = l.damaged > l.ok * 0.3 && l.ok > 0;
+            return (
+              <button key={l.name} onClick={() => openRoom(l.name)} className="p-4 text-left transition-shadow hover:shadow-md"
+                style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.current ? C.gold : bad ? C.crimson : C.ok}` }}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Ico size={16} strokeWidth={1.5} className="shrink-0" style={{ color: C.navy }} />
+                    <span className="truncate" style={FT.title}>{l.name}</span>
+                  </div>
+                  <RoomStatusPill loc={l} />
+                </div>
+                <div className="mb-3" style={FT.meta}>ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{l.count}</div></div>
+                  <div><div style={FT.label}>ใช้ได้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{l.ok}</div></div>
+                  <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: l.damaged ? C.crimson : C.ink }}>{l.damaged}</div></div>
+                </div>
+                <div className="flex items-center justify-between mb-1" style={FT.meta}>
+                  <span>การใช้งาน</span><span>{l.periodsPerWeek || 0} คาบ/สัปดาห์</span>
+                </div>
+                <div className="h-1.5 w-full mb-3" style={{ background: C.line }}><div className="h-1.5" style={{ width: `${utilPct}%`, background: C.navy }} /></div>
+                <div className="flex items-center justify-between pt-2" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
+                  <span className="flex items-center gap-1.5" style={{ color: l.nextMaintenance ? C.warn : C.mute }}>
+                    <Wrench size={12} />{l.nextMaintenance ? `ซ่อมบำรุงถัดไป ${l.nextMaintenance.nextDate}` : "ยังไม่มีนัดซ่อมบำรุง"}
+                  </span>
+                  <span className="flex items-center gap-0.5" style={{ color: C.navy, fontWeight: 600 }}>ดูห้อง <ChevronRight size={13} /></span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- ระดับ 1: สถานที่ทั้งหมด ---------- */
+  return (
+    <div ref={topRef}>
+      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกสถานที่ → เลือกห้อง → ดูครุภัณฑ์และงานซ่อมบำรุงของห้อง" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <FacStat label="สถานที่" value={zones.length} sub="กลุ่ม" />
+        <FacStat label="ห้อง/สนาม" value={totalRooms} sub="ทั้งหมด" />
+        <FacStat label="กำลังใช้งานตอนนี้" value={totalInUse} color={totalInUse ? C.crimson : C.ink} sub={`${nowDay} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} น.`} />
+        <FacStat label="ชิ้นที่ชำรุด" value={zones.reduce((s, z) => s + z.damaged, 0).toLocaleString()} color={C.crimson} sub="รวมทุกห้อง" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {zones.map((z) => {
+          const Ico = z.rooms[0] ? pickFacilityIcon(z.rooms[0].name) : Landmark;
+          return (
+            <button key={z.key} onClick={() => goZone(z.key)} className="p-5 text-left transition-shadow hover:shadow-md" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}><Ico size={18} strokeWidth={1.5} style={{ color: C.navy }} /></div>
+                  <div className="min-w-0"><div className="truncate" style={FT.title}>{z.name}</div><div style={FT.meta}>{z.rooms.length} ห้อง/สนาม</div></div>
+                </div>
+                {z.inUse > 0 ? <Pill fg={C.crimsonDeep} bg={C.badBg}>ใช้งาน {z.inUse}</Pill> : <Pill fg={C.ok} bg={C.okBg}>ว่างทั้งหมด</Pill>}
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{z.count}</div></div>
+                <div><div style={FT.label}>ใช้ได้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{z.ok.toLocaleString()}</div></div>
+                <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: z.damaged ? C.crimson : C.ink }}>{z.damaged}</div></div>
+              </div>
+              <div className="flex flex-wrap gap-1 mb-3">
+                {z.rooms.slice(0, 5).map((r) => <span key={r.name} className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11, background: C.paper, border: `1px solid ${C.line}` }}>{r.name}</span>)}
+                {z.rooms.length > 5 && <span className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11 }}>+{z.rooms.length - 5}</span>}
+              </div>
+              <div className="flex items-center justify-end" style={{ ...FT.meta, color: C.navy, fontWeight: 600 }}>ดูห้องทั้งหมด <ChevronRight size={13} /></div>
+            </button>
           );
         })}
       </div>
-      {selectedLocation && (
-        <Modal title={selectedLocation.name} onClose={() => setSelectedLocation(null)} wide>
-          <div className="text-xs mb-3" style={{ color: C.slate }}>ผู้ดูแล: {selectedLocation.owner || "ยังไม่ระบุ"}</div>
-          <div className="flex mb-4" style={{ borderBottom: `1px solid ${C.line}` }}>
-            {[['items', 'ครุภัณฑ์ของห้อง'], ['maintenance', 'ซ่อมบำรุง']].map(([key, label]) => (
-              <button key={key} className="px-3 py-2 text-sm font-semibold" onClick={() => setDetailTab(key)}
-                style={{ color: detailTab === key ? C.crimson : C.slate, borderBottom: detailTab === key ? `2px solid ${C.crimson}` : "2px solid transparent" }}>{label}</button>
-            ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   STAFF PROFILE — หน้าโปรไฟล์บุคลากร (เปิดจากทำเนียบบุคลากร)
+   แสดงเฉพาะข้อมูลงาน: ชื่อ หน่วยงาน หน้าที่ เบอร์งาน ตารางสอน
+   สถานที่ที่ดูแล และงานที่รับผิดชอบ
+   ============================================================ */
+function StaffProfileView({ person, schedule = [], tasks = [], user, onBack, setTab }) {
+  const key = normTeacherName(person.name);
+  const rows = useMemo(() => schedule
+    .filter((e) => normTeacherName(e.teacher) === key && e.period !== "AS")
+    .sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day) || String(a.start).localeCompare(String(b.start))), [schedule, key]);
+  const byDay = DAYS.map((d) => ({ day: d, rows: rows.filter((r) => r.day === d) })).filter((d) => d.rows.length);
+  const hours = rows.reduce((s, r) => s + durationHrs(r.start, r.end), 0);
+  const places = Array.from(new Set(rows.map((r) => r.loc).filter(Boolean)));
+  const caredRooms = LOCATIONS.filter((l) => normTeacherName(l.owner) === key);
+  const openTasks = tasks.filter((t) => normTeacherName(t.assignee) === key && t.status !== "COMPLETED" && t.status !== "CANCELLED")
+    .sort((a, b) => String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
+  const todayName = THAI_DAY_NOW[new Date().getDay()];
+  const isMe = String(person.id) === String(user.id);
+  const lvl = ROLE_META[person.level];
+
+  const label = { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate };
+  const meta = { fontSize: 12, color: C.slate };
+  const body = { fontSize: 13, color: C.ink };
+
+  const Stat = ({ l, v, sub, color = C.ink }) => (
+    <div className="p-3" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+      <div style={label}>{l}</div>
+      <div className="mt-1" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1, color }}>{v}</div>
+      {sub && <div className="mt-0.5" style={meta}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-1" style={meta}>
+          <button onClick={onBack} className="hover:underline" style={{ color: C.navy, fontWeight: 600 }}>ทำเนียบบุคลากร</button>
+          <ChevronRight size={12} style={{ color: C.mute }} />
+          <span style={{ color: C.ink, fontWeight: 600 }}>{person.name}</span>
+        </div>
+        <div className="flex gap-2">
+          <Btn small variant="ghost" onClick={onBack}>← กลับทำเนียบบุคลากร</Btn>
+          {setTab && <Btn small variant="ghost" icon={User} onClick={() => setTab("profile")}>โปรไฟล์ของฉัน</Btn>}
+        </div>
+      </div>
+
+      <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderTop: `3px solid ${lvl?.tint || C.navy}` }}>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.navy, color: C.white }}>
+            {person.photoUrl ? <img src={person.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={30} />}
           </div>
-          {detailTab === "items" ? (() => {
-            const roomItems = items.filter((item) => item.loc === selectedLocation.name);
-            return roomItems.length ? (
-              <div className="table-scroll"><table className="w-full text-sm">
-                <thead><tr style={{ color: C.slate }}>{["รหัส", "รายการ", "ปกติ", "ชำรุด", "ผู้ดูแล"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs">{h}</th>)}</tr></thead>
-                <tbody>{roomItems.map((item) => <tr key={item.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                  <td className="px-2 py-2 text-xs font-mono">{item.code}</td><td className="px-2 py-2">{item.name}</td>
-                  <td className="px-2 py-2" style={{ color: C.ok }}>{item.normal}</td><td className="px-2 py-2" style={{ color: item.damaged ? C.crimson : C.slate }}>{item.damaged}</td><td className="px-2 py-2 text-xs">{item.owner || "-"}</td>
-                </tr>)}</tbody>
-              </table></div>
-            ) : <div className="py-8 text-center text-sm" style={{ color: C.mute }}>ยังไม่มีครุภัณฑ์ที่ระบุห้องนี้</div>;
-          })() : (() => {
-            const locationRepairs = repairs.filter((repair) => repair.refName?.includes(selectedLocation.name) || repair.ref === selectedLocation.code);
-            const locationPm = pmSchedule.filter((entry) => entry.refName?.includes(selectedLocation.name) || entry.ref === selectedLocation.code);
-            return locationRepairs.length || locationPm.length ? <div className="space-y-4">
-              {locationRepairs.length > 0 && <div><h3 className="text-xs font-bold mb-2" style={{ color: C.navy }}>ประวัติการซ่อม</h3><div className="space-y-2">{locationRepairs.map((repair) => <div key={repair.id} className="p-3 text-sm" style={{ background: C.paper }}><div className="flex justify-between gap-2"><b>{repair.description || repair.refName}</b><span className="text-xs" style={{ color: C.mute }}>{repair.date}</span></div><div className="text-xs mt-1" style={{ color: C.slate }}>ค่าใช้จ่าย {repair.cost.toLocaleString()} บาท · {repair.status || "ไม่ระบุสถานะ"}</div></div>)}</div></div>}
-              {locationPm.length > 0 && <div><h3 className="text-xs font-bold mb-2" style={{ color: C.navy }}>แผนซ่อมบำรุง</h3><div className="space-y-2">{locationPm.map((entry) => <div key={entry.id} className="p-3 text-sm" style={{ background: C.paper }}><div className="flex justify-between gap-2"><b>{entry.cycle || "ตรวจบำรุง"}</b><span className="text-xs" style={{ color: C.warn }}>{entry.nextDate}</span></div><div className="text-xs mt-1" style={{ color: C.slate }}>ผู้รับผิดชอบ: {entry.owner || "ยังไม่ระบุ"}{entry.note ? ` · ${entry.note}` : ""}</div></div>)}</div></div>}
-            </div> : <div className="py-8 text-center text-sm" style={{ color: C.mute }}>ยังไม่มีรายการซ่อมหรือแผนซ่อมบำรุงของห้องนี้</div>;
-          })()}
-        </Modal>
-      )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{person.name}</h1>
+              {person.level && <Pill fg={lvl?.tint || C.navy} bg="#F2F3F7">{lvl?.label || person.level}</Pill>}
+              {isMe && <Pill fg={C.ok} bg={C.okBg}>คุณ</Pill>}
+            </div>
+            <div className="mt-1" style={{ ...body, fontWeight: 600 }}>{person.role || "บุคลากร"}</div>
+            <div className="mt-0.5 flex flex-wrap gap-x-4 gap-y-1" style={meta}>
+              <span className="flex items-center gap-1"><Building2 size={12} />{person.dept || "ไม่ระบุหน่วยงาน"}</span>
+              {person.phone && <span className="flex items-center gap-1 font-mono"><MessageSquare size={12} />{person.phone}</span>}
+              <span className="font-mono">ID {person.id}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <Stat l="คาบสอน" v={rows.length} sub="คาบ/สัปดาห์" />
+        <Stat l="ชั่วโมงสอน" v={hours.toFixed(1)} sub="ชม./สัปดาห์" />
+        <Stat l="สถานที่สอน" v={places.length} sub={places.slice(0, 2).join(", ") || "-"} />
+        <Stat l="งานที่รับผิดชอบ" v={openTasks.length} sub="ยังไม่เสร็จ" color={openTasks.length ? C.crimson : C.ink} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>ตารางสอนรายสัปดาห์</h3>
+            <span style={meta}>{rows.length} คาบ</span>
+          </div>
+          {byDay.length === 0 ? (
+            <div className="py-10 text-center" style={{ ...body, color: C.mute, border: `1px dashed ${C.line}` }}>ไม่พบตารางสอนของบุคลากรคนนี้</div>
+          ) : (
+            <div className="space-y-4">
+              {byDay.map(({ day, rows: dr }) => {
+                const dc = dayColor(day);
+                const isToday = day === todayName;
+                return (
+                  <div key={day} className="flex gap-3">
+                    <div className="w-20 shrink-0 pt-2">
+                      <div className="px-2 py-1 text-center" style={{ fontSize: 12, fontWeight: 700, background: dc.bg || C.paper, color: dc.fg || C.ink, border: `1px solid ${C.line}` }}>{day}</div>
+                      {isToday && <div className="text-center mt-1" style={{ fontSize: 11, fontWeight: 600, color: C.crimson }}>วันนี้</div>}
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      {dr.map((e) => (
+                        <div key={e.id} className="grid gap-3 px-3 py-2 items-center" style={{ gridTemplateColumns: "92px 1fr auto", background: isToday ? C.paper : C.white, border: `1px solid ${C.line}` }}>
+                          <span className="font-mono" style={{ fontSize: 12, fontWeight: 600, color: C.ink }}>{e.start}–{e.end}</span>
+                          <div className="min-w-0">
+                            <div className="truncate" style={{ ...body, fontWeight: 600 }}>{e.subject || "-"}</div>
+                            {e.group && <div className="truncate" style={meta}>{e.group}</div>}
+                          </div>
+                          <span className="flex items-center gap-1 truncate" style={meta}><MapPin size={12} />{e.loc || "-"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <h3 className="mb-3" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>สถานที่ที่ดูแล</h3>
+            {caredRooms.length ? (
+              <div className="space-y-1.5">
+                {caredRooms.map((l) => { const Ico = pickFacilityIcon(l.name); return (
+                  <div key={l.code} className="flex items-center gap-2 px-3 py-2" style={{ ...body, background: C.paper, border: `1px solid ${C.line}` }}>
+                    <Ico size={14} strokeWidth={1.5} style={{ color: C.navy }} /><span className="truncate">{l.name}</span>
+                  </div>
+                ); })}
+                {setTab && <button onClick={() => setTab("facility")} className="mt-1 hover:underline" style={{ ...meta, color: C.navy, fontWeight: 600 }}>ไปหน้าสถานที่ →</button>}
+              </div>
+            ) : <div style={{ ...meta, color: C.mute }}>ไม่ได้เป็นผู้ดูแลสถานที่ใด</div>}
+          </div>
+
+          <div className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <h3 className="mb-3" style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>งานที่รับผิดชอบ</h3>
+            {openTasks.length ? (
+              <div className="space-y-1.5">
+                {openTasks.slice(0, 6).map((t) => { const s = STATUS_META[taskBucket(t) === "overdue" ? "OVERDUE" : t.status] || STATUS_META.TODO; return (
+                  <div key={t.id} className="px-3 py-2" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <span style={{ ...body, fontWeight: 600 }}>{t.title}</span>
+                      <Pill fg={s.fg} bg={s.bg}>{s.label}</Pill>
+                    </div>
+                    {t.dueDate && <div className="mt-0.5" style={meta}>กำหนด {t.dueDate}{t.dueTime ? ` ${t.dueTime}` : ""}</div>}
+                  </div>
+                ); })}
+                {openTasks.length > 6 && <div style={meta}>และอีก {openTasks.length - 6} งาน</div>}
+              </div>
+            ) : <div style={{ ...meta, color: C.mute }}>ไม่มีงานค้าง</div>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2086,7 +2448,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], setTab 
    internal-only spreadsheet, never wired into the web app or the
    Google Sheets backend.
    ============================================================ */
-function StaffDirectory({ staff, schedule = [], setStaffList, user, logAction }) {
+function StaffDirectory({ staff, schedule = [], tasks = [], setStaffList, user, logAction, setTab }) {
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("ALL");
   const [edit, setEdit] = useState(null);
@@ -2122,6 +2484,11 @@ function StaffDirectory({ staff, schedule = [], setStaffList, user, logAction })
     postToSheets("deleteStaff", { id: s.id });
     setConfirmDel(null);
   };
+
+  if (selectedStaff) {
+    const fresh = staff.find((x) => x.id === selectedStaff.id) || selectedStaff;
+    return <StaffProfileView person={fresh} schedule={schedule} tasks={tasks} user={user} setTab={setTab} onBack={() => setSelectedStaff(null)} />;
+  }
 
   return (
     <div>
@@ -2172,21 +2539,6 @@ function StaffDirectory({ staff, schedule = [], setStaffList, user, logAction })
       {edit && (
         <Modal title={`แก้ไขบุคลากร: ${edit.name}`} onClose={() => setEdit(null)}>
           <StaffForm initial={edit} onSave={saveEdit} idEditable={false} />
-        </Modal>
-      )}
-      {selectedStaff && (
-        <Modal title={selectedStaff.name} onClose={() => setSelectedStaff(null)} wide>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center shrink-0" style={{ background: C.navy, color: C.white }}>
-              {selectedStaff.photoUrl ? <img src={selectedStaff.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={22} />}
-            </div>
-            <div><div className="text-sm font-semibold">{selectedStaff.role || "บุคลากร"}</div><div className="text-xs" style={{ color: C.slate }}>{selectedStaff.dept || "ไม่ระบุหน่วยงาน"} · {selectedStaff.phone || "ไม่มีเบอร์ติดต่อ"}</div></div>
-          </div>
-          <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>ตารางสอน</h3>
-          {(() => {
-            const rows = schedule.filter((entry) => normTeacherName(entry.teacher) === normTeacherName(selectedStaff.name) && entry.period !== "AS").sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day) || a.start.localeCompare(b.start));
-            return rows.length ? <div className="table-scroll"><table className="w-full text-sm"><thead><tr style={{ color: C.slate }}>{["วัน", "เวลา", "วิชา/กิจกรรม", "สถานที่", "กลุ่ม"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs">{h}</th>)}</tr></thead><tbody>{rows.map((entry) => <tr key={entry.id} style={{ borderTop: `1px solid ${C.line}` }}><td className="px-2 py-2">{entry.day}</td><td className="px-2 py-2 font-mono text-xs">{entry.start}–{entry.end}</td><td className="px-2 py-2">{entry.subject || "-"}</td><td className="px-2 py-2">{entry.loc || "-"}</td><td className="px-2 py-2">{entry.group || "-"}</td></tr>)}</tbody></table></div> : <div className="py-6 text-center text-sm" style={{ color: C.mute }}>ไม่พบตารางสอนของบุคลากรคนนี้</div>;
-          })()}
         </Modal>
       )}
       {showNew && (

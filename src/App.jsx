@@ -1193,10 +1193,13 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const [password, setPassword] = useState("");
   const submit = () => onLogin(loginId, password);
   return (
-    <div className="flex flex-col overflow-hidden" style={{ height: "100dvh", fontFamily: FONT, background: "#0A0A0A" }}>
-      {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width */}
+    <div className="flex flex-col overflow-hidden" style={{
+      height: "100dvh", fontFamily: FONT,
+      background: "linear-gradient(160deg,#3a3a3c 0%,#2c2c2e 18%,#232325 38%,#1a1a1c 62%,#0e0e10 100%)",
+    }}>
+      {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width. Transparent so it reads as one continuous background with the hero below, not a separate stacked panel. */}
       <header className="relative shrink-0 flex items-center justify-between px-5 min-[1080px]:px-10 py-3 min-[1080px]:py-4"
-        style={{ background: "linear-gradient(90deg,#2a2a2c,#3a3a3c 40%,#4a4a4c)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        style={{ background: "transparent", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="flex items-center gap-3 min-w-0">
           <img src={LOGO_URL} alt="ACT 1961 Sport Center" className="h-10 min-[1080px]:h-14 w-auto shrink-0" style={{ objectFit: "contain" }} />
         </div>
@@ -1219,9 +1222,9 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         )}
       </header>
 
-      {/* hero — mascot left, login card right on desktop; stacked on mobile */}
+      {/* hero — mascot left, login card right on desktop; stacked on mobile. Transparent: the outer wrapper's gradient already covers this area, so header and hero read as one seamless canvas. */}
       <div className="flex-1 min-h-0 relative flex flex-col min-[1080px]:flex-row overflow-y-auto overflow-x-hidden" style={{
-        background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
+        background: "transparent",
       }}>
         <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
           backgroundImage: "repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 3px)",

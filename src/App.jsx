@@ -27,23 +27,23 @@ const calendarLocalizer = dateFnsLocalizer({
 
 /* ============================================================
    DESIGN TOKENS — ACT Sport Center
-   Deep Royal Blue + Crimson + Gold on white. Premium enterprise,
-   sports-technology feel. No rounded "SaaS card kit" sameness —
-   flat panels, a hairline rule system, and a court-line motif.
+   Red + White. Premium enterprise, sports-technology feel.
+   No rounded "SaaS card kit" sameness — flat panels, a hairline
+   rule system, and a court-line motif.
    ============================================================ */
 const C_LIGHT = {
-  navy: "#181818",       // primary — near-black (was deep royal blue)
-  navyDeep: "#0A0A0A",   // sidebar / hero — true black
-  navySoft: "#3D3D3D",   // secondary neutral
+  navy: "#8C0D1C",        // primary — deep red (was near-black)
+  navyDeep: "#5C0712",    // sidebar / hero — darkest red
+  navySoft: "#A83F4A",    // secondary neutral — muted red
   crimson: "#C81E3A",    // primary red accent
   crimsonDeep: "#8C1327",
   gold: "#7A1220",       // tertiary accent — deep red (was gold)
   goldSoft: "#F1D2D6",   // light red tint (was gold tint)
   accent: "#E4354F",     // bright red — for icons/highlights on dark backgrounds
-  ink: "#12151C",
-  slate: "#5B6273",
-  line: "#E2E4EA",
-  paper: "#FBFBFA",
+  ink: "#2A1416",
+  slate: "#8A6A6A",
+  line: "#F3DCDB",
+  paper: "#FFF6F6",
   white: "#FFFFFF",
   ok: "#1E7A4C",
   okBg: "#EAF6EF",

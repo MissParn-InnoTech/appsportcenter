@@ -1187,7 +1187,7 @@ export default function App() {
    ============================================================ */
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const LOGO_URL = "https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png";
-  const MASCOT_URL = "https://i.postimg.cc/hvB9N1n8/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-3.png";
+  const MASCOT_URL = "/mascot.png";
   const MOBILE_BG_URL = "https://i.postimg.cc/90xFhcT9/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(6).png";
   const [navOpen, setNavOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -1240,7 +1240,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
         <div className="hidden min-[1080px]:flex relative shrink-0 overflow-hidden min-[1080px]:w-[48%] min-[1080px]:h-full items-start">
-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left-bottom" />
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-left-top" />
         </div>
 
         {/* login column */}

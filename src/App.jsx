@@ -636,6 +636,11 @@ const STAFF = [
   { id: "60009", name: "นายมานิตย์ บุบผาสุข", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Power Fighting", phone: "090-9722716", level: "L1" },
 ];
 
+// nav items that open an external system in a new tab instead of switching the internal `tab` state
+const EXTERNAL_NAV_LINKS = {
+  supervision: "https://act-supervision-dashboard-phitchaphorn-7832.vercel.app",
+};
+
 const ROLE_META = {
   L0: { label: "L0 · ครูนอกสังกัด", dash: "ยืม–คืนอุปกรณ์เท่านั้น", get tint() { return C.crimson; } },
   L1: { label: "L1 · Teacher", dash: "MY WORKSPACE", get tint() { return C.navySoft; } },
@@ -647,9 +652,9 @@ const ROLE_META = {
 const NAV = {
   L0: [["profile", "โปรไฟล์", User], ["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
   L1: [["profile", "โปรไฟล์", User], ["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
-  L2: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
-  L3: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L2: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["supervision", "ระบบนิเทศครู", Eye], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L3: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["supervision", "ระบบนิเทศครู", Eye], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["substitute", "จัดการสอนแทน", Shuffle], ["supervision", "ระบบนิเทศครู", Eye], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 // groups the drawer menu into labeled sections (like a categorized mobile-app menu).
@@ -658,7 +663,7 @@ const NAV = {
 const NAV_GROUPS = [
   { label: "ภาพรวม", keys: ["profile", "dashboard", "tasks", "calendar"] },
   { label: "ทรัพยากรและสถานที่", keys: ["inventory", "facility", "borrow", "damage", "maintenance"] },
-  { label: "บุคลากร", keys: ["staff", "schedule", "substitute"] },
+  { label: "บุคลากร", keys: ["staff", "schedule", "substitute", "supervision"] },
   { label: "ข้อมูลอ้างอิง", keys: ["budget", "knowledge"] },
   { label: "บริหารจัดการ", keys: ["analytics", "reports", "actions"] },
 ];
@@ -1352,8 +1357,9 @@ function Sidebar({ user, nav, tab, setTab, onLogout }) {
             <div className="px-5 pt-3 pb-1 text-[10px] font-bold tracking-wider uppercase" style={{ color: "#6B7699" }}>{group.label}</div>
             {group.items.filter(([k]) => k !== "profile").map(([key, label, Icon]) => {
               const active = tab === key;
+              const externalUrl = EXTERNAL_NAV_LINKS[key];
               return (
-                <button key={key} onClick={() => setTab(key)}
+                <button key={key} onClick={() => externalUrl ? window.open(externalUrl, "_blank", "noopener,noreferrer") : setTab(key)}
                   className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
                   style={{
                     color: active ? C.onDark : "#AEB8D6",
@@ -1422,8 +1428,9 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
                   <div className="px-5 pt-3 pb-1 text-[10px] font-bold tracking-wider uppercase" style={{ color: "#6B7699" }}>{group.label}</div>
                   {group.items.map(([key, label, Icon]) => {
                     const active = tab === key;
+                    const externalUrl = EXTERNAL_NAV_LINKS[key];
                     return (
-                      <button key={key} onClick={() => { setTab(key); setDrawer(false); }}
+                      <button key={key} onClick={() => { if (externalUrl) { window.open(externalUrl, "_blank", "noopener,noreferrer"); } else { setTab(key); } setDrawer(false); }}
                         className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
                         style={{
                           color: active ? C.onDark : "#AEB8D6",

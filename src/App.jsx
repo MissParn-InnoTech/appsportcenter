@@ -328,6 +328,16 @@ function writeScheduleCache(patch) {
   try { localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify({ ...readScheduleCache(), ...patch, savedAt: Date.now() })); } catch { /* ignore */ }
 }
 
+// แคชข้อมูลหลักทั้งหมด (ครุภัณฑ์ ยืม-คืน ชำรุด บุคลากร งาน กิจกรรม ซ่อมบำรุง คลังความรู้ ฯลฯ) ไว้ในเครื่อง
+// เปิดแอพครั้งถัดไปเห็นข้อมูลล่าสุดที่เคยโหลดได้ทันที (ไม่ต้องรอ) แล้วค่อยอัปเดตจาก Sheets เบื้องหลังแบบเงียบๆ
+const MAIN_DATA_CACHE_KEY = "act.maindata.cache.v1";
+function readMainDataCache() {
+  try { return JSON.parse(localStorage.getItem(MAIN_DATA_CACHE_KEY) || "null") || {}; } catch { return {}; }
+}
+function writeMainDataCache(data) {
+  try { localStorage.setItem(MAIN_DATA_CACHE_KEY, JSON.stringify({ ...data, savedAt: Date.now() })); } catch { /* ignore */ }
+}
+
 async function loadBudgetData(teacherId) {
   const data = await sheetsFetch(`${API_URL}?action=budgetData&teacherId=${encodeURIComponent(teacherId)}`);
   if (!data.ok && data.error && !("budgets" in data)) throw new Error(data.error || "load failed");
@@ -997,20 +1007,22 @@ export default function App() {
   const toggleTheme = () => setTheme((t) => { const n = t === "dark" ? "light" : "dark"; applyTheme(n); return n; });
   const [loading, setLoading] = useState(true);
 
-  const [items, setItems] = useState(seedItems());
-  const [borrows, setBorrows] = useState([
+  // ถ้ามีข้อมูลที่แคชไว้จากการโหลดครั้งก่อน ใช้แสดงผลทันที (ไม่ต้องรอ Sheets) แล้วค่อยอัปเดตเบื้องหลัง
+  const mainCache = API_URL ? readMainDataCache() : {};
+  const [items, setItems] = useState(() => mainCache.items || seedItems());
+  const [borrows, setBorrows] = useState(() => mainCache.borrows || [
     { id: "BR-1001", date: "2026-09-10", borrower: "อารีน่า (หน่วยงานภายนอก)", itemId: null, itemCode: "FAC-016", itemName: "บันไดอลูมิเนียม 12 ขั้น", qty: 1, where: "อารีน่า", purpose: "ใช้งานทั่วไป", due: "2026-09-30", returned: null, status: "borrowed" },
     { id: "BR-1002", date: "2026-09-15", borrower: "ม.ชาญวิทย์ พึ่งอิ่ม", itemId: null, itemCode: "FUT-005", itemName: "ลูกฟุตซอล สีขาว-ฟ้า (ใหม่)", qty: 10, where: "สนามฟุตซอล", purpose: "สอนคาบ ป.5/2", due: "2026-09-15", returned: null, status: "borrowed" },
   ]);
-  const [damages, setDamages] = useState([]);
+  const [damages, setDamages] = useState(() => mainCache.damages || []);
   const [actionsLog, setActionsLog] = useState([]);
-  const [staffList, setStaffList] = useState(STAFF);
-  const [schedule, setSchedule] = useState(() => readScheduleCache().base || []);
-  const [tasks, setTasks] = useState([]);
-  const [orgEvents, setOrgEvents] = useState([]);
-  const [repairs, setRepairs] = useState([]);
-  const [pmSchedule, setPmSchedule] = useState([]);
-  const [docs, setDocs] = useState([]);
+  const [staffList, setStaffList] = useState(() => mainCache.staff || STAFF);
+  const [schedule, setSchedule] = useState(() => mainCache.schedule || readScheduleCache().base || []);
+  const [tasks, setTasks] = useState(() => mainCache.tasks || []);
+  const [orgEvents, setOrgEvents] = useState(() => mainCache.orgEvents || []);
+  const [repairs, setRepairs] = useState(() => mainCache.repairs || []);
+  const [pmSchedule, setPmSchedule] = useState(() => mainCache.pmSchedule || []);
+  const [docs, setDocs] = useState(() => mainCache.docs || []);
 
   const [sheetsError, setSheetsError] = useState("");
   const [lang, setLang] = useState(getLang());
@@ -1045,6 +1057,8 @@ export default function App() {
           writeScheduleCache({ base: sc || [] });
           setTasks(tk || []);
           setOrgEvents(oe || []); setRepairs(rp || []); setPmSchedule(pm || []); setDocs(dc || []);
+          // แคชไว้ใช้ตอนเปิดแอพครั้งถัดไป (เห็นข้อมูลทันทีระหว่างรอโหลดข้อมูลใหม่เบื้องหลัง)
+          writeMainDataCache({ items: si, borrows: sb, damages: sd, staff: (ss && ss.length) ? ss : undefined, schedule: sc || [], tasks: tk || [], orgEvents: oe || [], repairs: rp || [], pmSchedule: pm || [], docs: dc || [] });
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
         return;

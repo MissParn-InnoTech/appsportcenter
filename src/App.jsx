@@ -112,7 +112,7 @@ const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,s
    ในเครื่อง (seed data) เหมือนเดิม ไม่กระทบการใช้งาน
    ============================================================ */
 // Web App ระบบครุภัณฑ์ (Code.gs)
-const API_URL = "https://script.google.com/macros/s/AKfycbyC3BxkA1N437zABQPJQ53e9mmfCPzlr5thhcBkrPVrEac2YMqORWTwhKvF6C_JzJRxRg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbx3p_BbPXDryWWbByXnqenkr1vVGBjUTeg1TrGBIgrcubPjPbVkg8oJpOBsSDcMApT0_Q/exec";
 // Web App ตารางสอนรายครู (TeachingSchedule.gs) — deploy แยกเป็นอีกโปรเจกต์
 const TEACHING_API_URL = "https://script.google.com/macros/s/AKfycbym8sgvcirl5YoNYHp4P6nmGQSyCh7Hcx4Ap6a-bZCgbou34uiUklwpdrAEsXFpVmU/exec";
 

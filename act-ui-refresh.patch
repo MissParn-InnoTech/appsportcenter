@@ -1,0 +1,1422 @@
+From 6ea2d82bd61a8ef16dfe524ef40b45bb68148ff2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 9 Oct 2026 23:03:19 +0700
+Subject: [PATCH] Redesign calendar, profile, locations, knowledge base and
+ reports pages
+
+Neutral grey ground, rounded white cards, Anuphan/IBM Plex Sans Thai type,
+ACT crimson reserved for primary actions. Sidebar unchanged. Calendar gains
+Thai month/day names and a month agenda panel; knowledge base gains category
+chips; reports move export actions to the page header.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01ShX9CKBweXmfeFYKYDBZNy
+---
+ index.html    |   3 +
+ src/App.jsx   | 863 +++++++++++++++++++++++++++++++-------------------
+ src/index.css |  48 +++
+ 3 files changed, 588 insertions(+), 326 deletions(-)
+
+diff --git a/index.html b/index.html
+index 4d869db..dbc4511 100644
+--- a/index.html
++++ b/index.html
+@@ -10,6 +10,9 @@
+     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+     <meta name="theme-color" content="#0A0A0A" />
++    <link rel="preconnect" href="https://fonts.googleapis.com" />
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
++    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" />
+   </head>
+   <body>
+     <div id="root"></div>
+diff --git a/src/App.jsx b/src/App.jsx
+index 53a5825..c22884b 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -833,6 +833,90 @@ function Field({ label, children }) {
+ }
+ const inputStyle = { get border() { return `1px solid ${C.line}`; }, padding: "8px 10px", width: "100%", fontFamily: FONT, fontSize: 14, get color() { return C.ink; }, get background() { return C.white; } };
+ 
++/* ============================================================
++   MODERN PAGE KIT — ใช้กับหน้า ปฏิทิน / โปรไฟล์ / สถานที่ /
++   คลังความรู้ / รายงาน : พื้นเทากลาง การ์ดขาวมุมโค้ง ตัวอักษรเข้ม
++   สีแดง ACT ใช้เฉพาะปุ่มหลักและจุดเน้น (แถบเมนูซ้ายไม่เปลี่ยน)
++   ============================================================ */
++const MFONT = "'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,sans-serif";
++const MDISPLAY = "'Anuphan','IBM Plex Sans Thai','Noto Sans Thai',sans-serif";
++const N_LIGHT = {
++  navy: "#17171B", navyDeep: "#17171B", navySoft: "#5B5B66", ink: "#17171B", slate: "#5B5B66", mute: "#6B6B76",
++  line: "#E6E6EA", lineStrong: "#D6D6DC", paper: "#F7F7F9", white: "#FFFFFF", bg: "#F4F4F6", soft: "#F0F0F3",
++  tint: "#FCEEF1", tintInk: "#8E1229", inv: "#17171B", invText: "#FFFFFF",
++};
++const N_DARK = {
++  navyDeep: "#1F2228", lineStrong: "#3A3E48", paper: "#1C1E24", bg: "#0F1013", soft: "#23262D",
++  tint: "#2E1419", tintInk: "#F2899A", inv: "#E8E9EC", invText: "#17191E",
++};
++// พาเลตต์กลางของหน้าแบบใหม่ — คีย์ชุดเดียวกับ C จึงใช้แทนกันได้ทั้งธีมสว่าง/มืด
++function NC() { return { ...C, ...(C.white === C_DARK.white ? N_DARK : N_LIGHT) }; }
++const mCard = (N, extra) => ({ background: N.white, border: `1px solid ${N.line}`, borderRadius: 14, ...extra });
++const mH2 = (N) => ({ fontFamily: MDISPLAY, fontWeight: 600, fontSize: 17, lineHeight: 1.3, color: N.ink });
++
++function MPage({ children, innerRef, className = "" }) {
++  const N = NC();
++  return <div ref={innerRef} className={`m-page ${className}`} style={{ background: N.bg, color: N.ink, fontFamily: MFONT }}>{children}</div>;
++}
++
++function MHead({ eyebrow, title, sub, right }) {
++  const N = NC();
++  return (
++    <div className="flex items-end justify-between gap-4 flex-wrap mb-5">
++      <div className="min-w-0">
++        {eyebrow && <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: N.crimson }}>{eyebrow}</div>}
++        <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: N.ink, marginTop: 2 }}>{title}</h1>
++        {sub && <p style={{ fontSize: 14, color: N.slate, marginTop: 4, maxWidth: "64ch" }}>{sub}</p>}
++      </div>
++      {right && <div className="flex items-center gap-2 flex-wrap">{right}</div>}
++    </div>
++  );
++}
++
++function MBtn({ children, onClick, variant = "primary", disabled, icon: Icon, small, title }) {
++  const N = NC();
++  const red = { background: N.crimson, color: N.onDark, border: `1px solid ${N.crimson}` };
++  const styles = {
++    primary: red, crimson: red,
++    dark: { background: N.inv, color: N.invText, border: `1px solid ${N.inv}` },
++    ghost: { background: N.white, color: N.ink, border: `1px solid ${N.lineStrong}` },
++    gold: { background: N.gold, color: N.onDark, border: `1px solid ${N.gold}` },
++  };
++  return (
++    <button onClick={onClick} disabled={disabled} title={title}
++      className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
++      style={{ ...styles[variant], minHeight: small ? 36 : 44, padding: small ? "0 12px" : "0 16px", fontSize: small ? 13 : 14, fontWeight: 600, borderRadius: 10 }}>
++      {Icon && <Icon size={small ? 14 : 16} />}
++      {children}
++    </button>
++  );
++}
++
++function MStat({ label, value, sub, color, dot }) {
++  const N = NC();
++  return (
++    <div style={mCard(N, { padding: "14px 16px" })}>
++      <div className="flex items-center gap-1.5" style={{ fontSize: 13, color: N.slate }}>
++        {dot && <span className="inline-block shrink-0" style={{ width: 8, height: 8, borderRadius: 2, background: dot }} />}
++        <span className="truncate">{label}</span>
++      </div>
++      <div style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: typeof value === "string" && value.length > 10 ? 17 : 26, lineHeight: 1.25, color: color || N.ink, fontVariantNumeric: "tabular-nums" }}>{value}</div>
++      {sub && <div className="truncate" style={{ fontSize: 12, color: N.slate }}>{sub}</div>}
++    </div>
++  );
++}
++
++function MChip({ on, onClick, children, count }) {
++  const N = NC();
++  return (
++    <button onClick={onClick} aria-pressed={on} className="inline-flex items-center gap-2 whitespace-nowrap"
++      style={{ minHeight: 40, padding: "0 14px", borderRadius: 999, fontSize: 13.5, fontWeight: 500, background: on ? N.inv : N.white, color: on ? N.invText : N.ink, border: `1px solid ${on ? N.inv : N.lineStrong}` }}>
++      {children}
++      {count !== undefined && <span style={{ padding: "0 8px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: on ? "rgba(128,128,128,0.35)" : N.soft, color: on ? N.invText : N.ink }}>{count}</span>}
++    </button>
++  );
++}
++
+ /* ============================================================
+    LANGUAGE (TH / EN) + PASSWORD MANAGEMENT
+    ============================================================ */
+@@ -2075,15 +2159,16 @@ const ROOM_OPEN_HOURS_PER_WEEK = 40;
+ 
+ // ตัวอักษรมาตรฐานของหน้าสถานที่ — ขนาดเดียวกันทุกระดับ
+ const FT = {
+-  get label() { return { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate }; },
+-  get title() { return { fontSize: 15, fontWeight: 700, color: C.ink }; },
+-  get body() { return { fontSize: 13, color: C.ink }; },
+-  get meta() { return { fontSize: 12, color: C.slate }; },
+-  num: { fontSize: 24, fontWeight: 700, lineHeight: 1.1 },
++  get label() { return { fontSize: 12, color: NC().slate }; },
++  get title() { return { fontFamily: MDISPLAY, fontSize: 17, fontWeight: 600, lineHeight: 1.3, color: NC().ink }; },
++  get body() { return { fontSize: 14, color: NC().ink }; },
++  get meta() { return { fontSize: 13, color: NC().slate }; },
++  num: { fontFamily: MDISPLAY, fontSize: 24, fontWeight: 700, lineHeight: 1.2 },
+ };
+ 
+ // สุขภาพครุภัณฑ์ของห้อง = ชิ้นพร้อมใช้ / ชิ้นทั้งหมด
+ function roomHealth(l) {
++  const C = NC();
+   const total = (l.ok || 0) + (l.damaged || 0) + (l.lost || 0);
+   if (!total) return { pct: null, label: "ไม่มีครุภัณฑ์", fg: C.mute, bg: C.paper, bar: C.line };
+   const pct = Math.round(((l.ok || 0) / total) * 100);
+@@ -2095,30 +2180,26 @@ function roomUtil(l) {
+   return Math.min(100, Math.round(((l.hoursPerWeek || 0) / ROOM_OPEN_HOURS_PER_WEEK) * 100));
+ }
+ 
+-function FacStat({ label, value, color = C.ink, sub }) {
+-  return (
+-    <div className="p-3" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-      <div style={FT.label}>{label}</div>
+-      <div className="mt-1" style={{ ...FT.num, color }}>{value}</div>
+-      {sub && <div className="mt-0.5" style={FT.meta}>{sub}</div>}
+-    </div>
+-  );
++function FacStat({ label, value, color, sub }) {
++  return <MStat label={label} value={value} color={color} sub={sub} />;
+ }
+ 
+ function FacMeter({ label, pct, color, right }) {
++  const C = NC();
+   return (
+-    <div>
+-      <div className="flex items-center justify-between mb-1" style={FT.meta}>
++    <div className="w-full">
++      <div className="flex items-baseline justify-between mb-1.5" style={FT.meta}>
+         <span>{label}</span><span style={{ fontWeight: 600, color: C.ink }}>{right ?? (pct === null ? "–" : `${pct}%`)}</span>
+       </div>
+-      <div className="h-1.5 w-full" style={{ background: C.line }}>
+-        <div className="h-1.5" style={{ width: `${pct || 0}%`, background: color }} />
++      <div className="w-full" style={{ height: 8, borderRadius: 4, background: C.soft, overflow: "hidden" }}>
++        <div style={{ height: "100%", borderRadius: 4, width: `${pct || 0}%`, background: color }} />
+       </div>
+     </div>
+   );
+ }
+ 
+ function Crumbs({ parts }) {
++  const C = NC();
+   return (
+     <div className="flex items-center flex-wrap gap-1 mb-3 no-print" style={FT.meta}>
+       {parts.map((p, i) => (
+@@ -2136,6 +2217,7 @@ function Crumbs({ parts }) {
+ }
+ 
+ function RoomStatusPill({ loc }) {
++  const C = NC();
+   return loc.current ? (
+     <Pill fg={C.crimsonDeep} bg={C.badBg}><span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: C.crimson }} />กำลังใช้งาน</Pill>
+   ) : (
+@@ -2144,21 +2226,17 @@ function RoomStatusPill({ loc }) {
+ }
+ 
+ function FilterChip({ on, onClick, children, count }) {
+-  return (
+-    <button onClick={onClick} className="px-3 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
+-      style={{ fontSize: 12.5, fontWeight: 600, background: on ? C.ink : C.white, color: on ? C.white : C.navySoft, border: `1px solid ${on ? C.ink : C.line}` }}>
+-      {children}{count !== undefined && <span style={{ fontSize: 11, opacity: 0.7 }}>{count}</span>}
+-    </button>
+-  );
++  return <MChip on={on} onClick={onClick} count={count}>{children}</MChip>;
+ }
+ 
+ function RoomCard({ l, onOpen, zoneName }) {
++  const C = NC();
+   const Ico = pickFacilityIcon(l.name);
+   const h = roomHealth(l);
+   const u = roomUtil(l);
+   return (
+-    <button onClick={onOpen} className="p-4 text-left transition-shadow hover:shadow-md flex flex-col"
+-      style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.current ? C.crimson : h.bar}` }}>
++    <button onClick={onOpen} className="text-left transition-shadow hover:shadow-md flex flex-col"
++      style={mCard(C, { padding: 18 })}>
+       <div className="flex items-start justify-between gap-2 mb-1 w-full">
+         <div className="flex items-center gap-2 min-w-0">
+           <Ico size={16} strokeWidth={1.5} className="shrink-0" style={{ color: C.navy }} />
+@@ -2167,20 +2245,20 @@ function RoomCard({ l, onOpen, zoneName }) {
+         <span className="shrink-0 whitespace-nowrap"><RoomStatusPill loc={l} /></span>
+       </div>
+       <div className="mb-3" style={FT.meta}>{zoneName ? `${zoneName} · ` : ""}ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
+-      <div className="mb-3 px-2.5 py-1.5" style={{ ...FT.meta, background: l.current ? C.badBg : C.paper, color: l.current ? C.crimsonDeep : C.slate }}>
++      <div className="mb-3 px-3 py-2 w-full" style={{ ...FT.meta, borderRadius: 10, background: l.current ? C.tint : C.paper, color: l.current ? C.tintInk : C.slate }}>
+         {l.current ? `ตอนนี้: ${l.current.subject || "ใช้งาน"} · ${l.current.start}–${l.current.end}`
+           : l.next ? `คาบถัดไป ${l.next.start} · ${l.next.subject || "-"}` : "ไม่มีคาบใช้งานต่อจากนี้ในวันนี้"}
+       </div>
+-      <div className="grid grid-cols-3 gap-2 mb-3">
++      <div className="grid grid-cols-3 gap-2 mb-3 w-full">
+         <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{l.count}</div></div>
+         <div><div style={FT.label}>พร้อมใช้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{l.ok.toLocaleString()}</div></div>
+         <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: l.damaged ? C.crimson : C.ink }}>{l.damaged}</div></div>
+       </div>
+-      <div className="space-y-2 mb-3">
++      <div className="space-y-2.5 mb-3 w-full">
+         <FacMeter label="สภาพครุภัณฑ์" pct={h.pct} color={h.bar} />
+         <FacMeter label="อัตราการใช้ห้อง" pct={u} color={C.navy} right={`${u}% · ${l.periodsPerWeek || 0} คาบ/สัปดาห์`} />
+       </div>
+-      <div className="mt-auto flex items-center justify-between pt-2 w-full" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
++      <div className="mt-auto flex items-center justify-between gap-2 pt-3 w-full" style={{ ...FT.meta, borderTop: `1px solid ${C.line}` }}>
+         <span className="flex items-center gap-1.5" style={{ color: l.nextMaintenance ? (l.nextMaintenance.nextDate < TODAY_ISO ? C.crimson : C.warn) : C.mute }}>
+           <Wrench size={12} />{l.nextMaintenance ? `${l.nextMaintenance.nextDate < TODAY_ISO ? "เลยนัดซ่อมบำรุง" : "ซ่อมบำรุงถัดไป"} ${l.nextMaintenance.nextDate}` : "ยังไม่มีนัดซ่อมบำรุง"}
+         </span>
+@@ -2191,6 +2269,7 @@ function RoomCard({ l, onOpen, zoneName }) {
+ }
+ 
+ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages = [], tasks = [], borrows = [], setTab }) {
++  const C = NC();
+   const [zoneKey, setZoneKey] = useState(null);
+   const [roomName, setRoomName] = useState(null);
+   const [detailTab, setDetailTab] = useState("items");
+@@ -2328,18 +2407,18 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+       </div>
+     );
+     const Row = ({ left, sub, right, tone }) => (
+-      <div className="flex items-start justify-between gap-3 p-3" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${tone || C.line}` }}>
+-        <div className="min-w-0"><div style={{ ...FT.body, fontWeight: 600 }}>{left}</div>{sub && <div className="mt-0.5" style={FT.meta}>{sub}</div>}</div>
++      <div className="flex items-start justify-between gap-3 p-3" style={mCard(C, { borderRadius: 12 })}>
++        <div className="min-w-0"><div className="flex items-center gap-2" style={{ ...FT.body, fontWeight: 600 }}>{tone && <span className="inline-block shrink-0" style={{ width: 8, height: 8, borderRadius: 2, background: tone }} />}<span className="min-w-0">{left}</span></div>{sub && <div className="mt-0.5" style={FT.meta}>{sub}</div>}</div>
+         {right && <div className="shrink-0">{right}</div>}
+       </div>
+     );
+     const TABS = [["items", "ครุภัณฑ์ของห้อง", room.count], ["schedule", "ตารางใช้ห้อง", weekRows.length], ["maintenance", "ซ่อมบำรุง", maintCount], ["borrow", "ประวัติยืม–คืน", roomBorrows.length]];
+ 
+     return (
+-      <div ref={topRef}>
++      <MPage innerRef={topRef}>
+         {printCss}
+         <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, roomZone && { label: roomZone.name, onClick: () => goZone(roomZone.key) }, { label: room.name }].filter(Boolean)} />
+-        <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderTop: `3px solid ${room.current ? C.crimson : h.bar}` }}>
++        <div className="p-5 mb-4" style={mCard(C)}>
+           <div className="flex items-start justify-between gap-3 flex-wrap">
+             <div className="flex items-center gap-3 min-w-0">
+               <div className="w-12 h-12 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+@@ -2347,7 +2426,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+               </div>
+               <div className="min-w-0">
+                 <div style={FT.label}>{room.code || "ROOM"}{roomZone ? ` · ${roomZone.name}` : ""}</div>
+-                <h1 style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{room.name}</h1>
++                <h1 style={{ fontFamily: MDISPLAY, fontSize: 24, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{room.name}</h1>
+                 <div className="flex items-center gap-2 flex-wrap mt-0.5" style={FT.meta}>
+                   <span>ผู้ดูแล: {room.owner || "ยังไม่ระบุ"}</span>
+                   <RoomStatusPill loc={room} />
+@@ -2356,11 +2435,11 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+               </div>
+             </div>
+             <div className="flex items-center gap-2 flex-wrap no-print">
+-              {setTab && <Btn small variant="ghost" icon={AlertTriangle} onClick={() => setTab("damage")}>แจ้งชำรุด</Btn>}
+-              {setTab && <Btn small variant="ghost" icon={ArrowLeftRight} onClick={() => setTab("borrow")}>ยืมอุปกรณ์</Btn>}
+-              <Btn small variant="ghost" icon={Download} onClick={exportRoom} disabled={!roomItems.length}>ส่งออก CSV</Btn>
+-              <Btn small variant="ghost" icon={FileText} onClick={() => window.print()}>พิมพ์</Btn>
+-              <Btn small variant="ghost" onClick={() => setRoomName(null)}>← กลับไปเลือกห้อง</Btn>
++              {setTab && <MBtn small variant="ghost" icon={AlertTriangle} onClick={() => setTab("damage")}>แจ้งชำรุด</MBtn>}
++              {setTab && <MBtn small variant="ghost" icon={ArrowLeftRight} onClick={() => setTab("borrow")}>ยืมอุปกรณ์</MBtn>}
++              <MBtn small variant="ghost" icon={Download} onClick={exportRoom} disabled={!roomItems.length}>ส่งออก CSV</MBtn>
++              <MBtn small variant="ghost" icon={FileText} onClick={() => window.print()}>พิมพ์</MBtn>
++              <MBtn small variant="ghost" onClick={() => setRoomName(null)}>← กลับไปเลือกห้อง</MBtn>
+             </div>
+           </div>
+           <div className="mt-3 pt-3" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
+@@ -2511,7 +2590,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+               <Block title={`ประวัติการซ่อม${repairCost ? ` · รวม ${repairCost.toLocaleString()} บาท` : ""}`} count={roomRepairs.length} empty="ยังไม่มีประวัติการซ่อม">
+                 {roomRepairs.map((r) => <Row key={r.id} left={r.description || r.refName} sub={`${r.date || "-"} · ${r.vendor || "ไม่ระบุช่าง"} · ${r.cost.toLocaleString()} บาท${r.recommendation ? ` · คำแนะนำ: ${r.recommendation}` : ""}`} right={<Pill fg={C.slate} bg={C.paper}>{r.status || "ไม่ระบุ"}</Pill>} />)}
+               </Block>
+-              {setTab && <div className="no-print"><Btn small variant="ghost" icon={Wrench} onClick={() => setTab("maintenance")}>เปิดหน้าซ่อมบำรุงทั้งหมด</Btn></div>}
++              {setTab && <div className="no-print"><MBtn small variant="ghost" icon={Wrench} onClick={() => setTab("maintenance")}>เปิดหน้าซ่อมบำรุงทั้งหมด</MBtn></div>}
+             </div>
+           </div>
+         )}
+@@ -2542,7 +2621,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+             </div>
+           ) : <div className="py-10 text-center" style={{ ...FT.body, color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีประวัติการยืมอุปกรณ์ของห้องนี้</div>
+         )}
+-      </div>
++      </MPage>
+     );
+   }
+ 
+@@ -2550,10 +2629,10 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+   if (zone) {
+     const zh = roomHealth(zone);
+     return (
+-      <div ref={topRef}>
++      <MPage innerRef={topRef}>
+         <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, { label: zone.name }]} />
+-        <SectionHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์ ตารางใช้ห้อง และงานซ่อมบำรุง`}
+-          right={<Btn variant="ghost" onClick={goAll}>← สถานที่ทั้งหมด</Btn>} />
++        <MHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์ ตารางใช้ห้อง และงานซ่อมบำรุง`}
++          right={<MBtn variant="ghost" onClick={goAll}>← สถานที่ทั้งหมด</MBtn>} />
+         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+           <FacStat label="ห้อง/สนาม" value={zone.rooms.length} sub={`ใช้งานอยู่ ${zone.inUse} ห้อง`} color={zone.inUse ? C.crimson : C.ink} />
+           <FacStat label="สภาพครุภัณฑ์รวม" value={zh.pct === null ? "–" : `${zh.pct}%`} color={zh.fg} sub={zh.label} />
+@@ -2563,7 +2642,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+           {zone.rooms.map((l) => <RoomCard key={l.name} l={l} onOpen={() => openRoom(l.name)} />)}
+         </div>
+-      </div>
++      </MPage>
+     );
+   }
+ 
+@@ -2577,8 +2656,8 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+   const avgUtil = allRooms.length ? Math.round(allRooms.reduce((s, l) => s + roomUtil(l), 0) / allRooms.length) : 0;
+ 
+   return (
+-    <div ref={topRef}>
+-      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกสถานที่ → เลือกห้อง → ดูครุภัณฑ์ ตารางใช้ห้อง งานซ่อมบำรุง และประวัติยืม–คืน" />
++    <MPage innerRef={topRef}>
++      <MHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกสถานที่ → เลือกห้อง → ดูครุภัณฑ์ ตารางใช้ห้อง งานซ่อมบำรุง และประวัติยืม–คืน" />
+       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-5">
+         <FacStat label="ห้อง/สนามทั้งหมด" value={allRooms.length} sub={`ใน ${zones.length} กลุ่มสถานที่`} />
+         <FacStat label="กำลังใช้งานตอนนี้" value={totalInUse} color={totalInUse ? C.crimson : C.ink} sub={`${nowDay} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} น.`} />
+@@ -2587,10 +2666,11 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+         <FacStat label="อัตราการใช้ห้องเฉลี่ย" value={`${avgUtil}%`} sub={`จาก ${ROOM_OPEN_HOURS_PER_WEEK} ชม./สัปดาห์`} />
+       </div>
+ 
+-      <div className="flex items-center gap-2 flex-wrap mb-4">
+-        <div className="relative" style={{ width: 280 }}>
+-          <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาห้อง รหัส หรือผู้ดูแล..." style={{ ...inputStyle, paddingLeft: 32 }} />
++      <div className="flex items-center gap-2 flex-wrap mb-5">
++        <div className="relative" style={{ flex: "1 1 240px", maxWidth: 320 }}>
++          <Search size={16} style={{ position: "absolute", left: 12, top: 13, color: C.mute }} />
++          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาห้อง รหัส หรือผู้ดูแล..." aria-label="ค้นหาห้อง รหัส หรือผู้ดูแล"
++            style={{ ...inputStyle, fontFamily: MFONT, paddingLeft: 36, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
+         </div>
+         {FILTERS.map(([k, label, n]) => <FilterChip key={k} on={filter === k} onClick={() => setFilter(k)} count={n}>{label}</FilterChip>)}
+         {searching && <button onClick={() => { setQ(""); setFilter("ALL"); }} className="hover:underline" style={{ ...FT.meta, color: C.navy, fontWeight: 600 }}>ล้างตัวกรอง</button>}
+@@ -2611,34 +2691,45 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
+             const Ico = z.rooms[0] ? pickFacilityIcon(z.rooms[0].name) : Landmark;
+             const zh = roomHealth(z);
+             return (
+-              <button key={z.key} onClick={() => goZone(z.key)} className="p-5 text-left transition-shadow hover:shadow-md flex flex-col" style={{ background: C.white, border: `1px solid ${C.line}`, borderTop: `3px solid ${zh.bar}` }}>
+-                <div className="flex items-start justify-between gap-2 mb-3 w-full">
++              <button key={z.key} onClick={() => goZone(z.key)} className="text-left transition-shadow hover:shadow-md flex flex-col gap-4" style={mCard(C, { padding: 20 })}>
++                <div className="flex items-start justify-between gap-3 w-full">
+                   <div className="flex items-center gap-3 min-w-0">
+-                    <div className="w-10 h-10 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}><Ico size={18} strokeWidth={1.5} style={{ color: C.navy }} /></div>
+-                    <div className="min-w-0"><div className="truncate" style={FT.title}>{z.name}</div><div style={FT.meta}>{z.rooms.length} ห้อง/สนาม</div></div>
++                    <div className="shrink-0 flex items-center justify-center" style={{ width: 42, height: 42, borderRadius: 10, background: C.soft }}><Ico size={20} strokeWidth={1.6} style={{ color: C.ink }} /></div>
++                    <div className="min-w-0"><div style={FT.title}>{z.name}</div><div style={FT.meta}>{z.rooms.length} ห้อง/สนาม · {z.inUse > 0 ? `ใช้งาน ${z.inUse}` : "ว่างทั้งหมด"}</div></div>
+                   </div>
+-                  <span className="shrink-0 whitespace-nowrap">{z.inUse > 0 ? <Pill fg={C.crimsonDeep} bg={C.badBg}>ใช้งาน {z.inUse}</Pill> : <Pill fg={C.ok} bg={C.okBg}>ว่างทั้งหมด</Pill>}</span>
+                 </div>
+-                <div className="grid grid-cols-3 gap-2 mb-3 w-full">
+-                  <div><div style={FT.label}>รายการ</div><div style={{ ...FT.num, fontSize: 20 }}>{z.count}</div></div>
+-                  <div><div style={FT.label}>พร้อมใช้</div><div style={{ ...FT.num, fontSize: 20, color: C.ok }}>{z.ok.toLocaleString()}</div></div>
+-                  <div><div style={FT.label}>ชำรุด</div><div style={{ ...FT.num, fontSize: 20, color: z.damaged ? C.crimson : C.ink }}>{z.damaged}</div></div>
++                <div className="w-full">
++                  <div className="flex items-baseline justify-between mb-1.5">
++                    <span className="flex items-center gap-2 flex-wrap" style={FT.meta}>สภาพครุภัณฑ์
++                      <span className="whitespace-nowrap" style={{ padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: z.attention ? C.tint : C.okBg, color: z.attention ? C.tintInk : C.ok }}>{z.attention ? `ต้องดูแล ${z.attention} ห้อง` : "ทุกห้องสภาพดี"}</span>
++                    </span>
++                    <span style={{ ...FT.num, fontSize: 20, color: C.ink }}>{zh.pct === null ? "–" : `${zh.pct}%`}</span>
++                  </div>
++                  <div className="w-full" style={{ height: 8, borderRadius: 4, background: C.soft, overflow: "hidden" }}>
++                    <div style={{ height: "100%", borderRadius: 4, width: `${zh.pct || 0}%`, background: zh.bar }} />
++                  </div>
+                 </div>
+-                <div className="mb-3 w-full"><FacMeter label="สภาพครุภัณฑ์" pct={zh.pct} color={zh.bar} /></div>
+-                <div className="flex flex-wrap gap-1 mb-3">
+-                  {z.rooms.slice(0, 5).map((r) => <span key={r.name} className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11, background: C.paper, border: `1px solid ${C.line}` }}>{r.name}</span>)}
+-                  {z.rooms.length > 5 && <span className="px-2 py-0.5" style={{ ...FT.meta, fontSize: 11 }}>+{z.rooms.length - 5}</span>}
++                <div className="grid grid-cols-3 gap-2 w-full">
++                  {[["รายการ", z.count.toLocaleString(), C.ink], ["พร้อมใช้", z.ok.toLocaleString(), C.ink], ["ชำรุด", z.damaged.toLocaleString(), z.damaged ? C.tintInk : C.ink]].map(([k, v, col]) => (
++                    <div key={k} style={{ background: C.paper, borderRadius: 10, padding: "10px 12px" }}>
++                      <div style={FT.label}>{k}</div>
++                      <div style={{ fontSize: 16, fontWeight: 600, color: col, fontVariantNumeric: "tabular-nums" }}>{v}</div>
++                    </div>
++                  ))}
+                 </div>
+-                <div className="mt-auto flex items-center justify-between w-full pt-2" style={{ ...FT.meta, borderTop: `1px dashed ${C.line}` }}>
+-                  <span style={{ color: z.attention ? C.warn : C.mute }}>{z.attention ? `ต้องดูแล ${z.attention} ห้อง` : "ทุกห้องสภาพดี"}</span>
+-                  <span className="flex items-center gap-0.5" style={{ color: C.navy, fontWeight: 600 }}>ดูห้องทั้งหมด <ChevronRight size={13} /></span>
++                <div className="flex flex-wrap gap-1.5 w-full">
++                  {z.rooms.slice(0, 5).map((r) => <span key={r.name} style={{ padding: "4px 10px", borderRadius: 999, fontSize: 13, color: C.ink, boxShadow: `inset 0 0 0 1px ${C.line}` }}>{r.name}</span>)}
++                  {z.rooms.length > 5 && <span style={{ padding: "4px 6px", fontSize: 13, color: C.slate }}>+{z.rooms.length - 5}</span>}
+                 </div>
++                <span className="mt-auto w-full inline-flex items-center justify-center gap-1.5" style={{ minHeight: 44, borderRadius: 10, fontSize: 14, fontWeight: 500, color: C.ink, boxShadow: `inset 0 0 0 1px ${C.lineStrong}` }}>
++                  ดูห้องทั้งหมด <ChevronRight size={16} />
++                </span>
+               </button>
+             );
+           })}
+         </div>
+       )}
+-    </div>
++    </MPage>
+   );
+ }
+ 
+@@ -4261,6 +4352,8 @@ const REPORT_CATALOG = [
+ ];
+ 
+ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], repairs = [], pmSchedule = [], docs = [] }) {
++  const C = NC();
++  const FONT = MFONT;
+   const [key, setKey] = useState("inventory");
+   const [rq, setRq] = useState("");
+   const [showAll, setShowAll] = useState(false);
+@@ -4285,7 +4378,7 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+       ];
+       const byC = {};
+       items.forEach((i) => { const n = catName(i.catCode); byC[n] = byC[n] || { name: n, ok: 0, damaged: 0 }; byC[n].ok += i.normal; byC[n].damaged += i.damaged; });
+-      const chart = { title: "จำนวนชิ้นตามหมวด (10 หมวดที่มีมากที่สุด)", stacked: true, data: Object.values(byC).sort((x, y) => (y.ok + y.damaged) - (x.ok + x.damaged)).slice(0, 10), bars: [{ key: "ok", name: "ใช้งานได้", color: C.ok }, { key: "damaged", name: "ชำรุด", color: C.crimson }] };
++      const chart = { title: "จำนวนชิ้นตามหมวด (10 หมวดที่มีมากที่สุด)", stacked: true, data: Object.values(byC).sort((x, y) => (y.ok + y.damaged) - (x.ok + x.damaged)).slice(0, 10), bars: [{ key: "ok", name: "ใช้งานได้", color: "#2456C8" }, { key: "damaged", name: "ชำรุด", color: "#F0A23C" }] };
+       return { rows, summary, chart };
+     }
+     if (key === "facility") {
+@@ -4456,35 +4549,40 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+     return [C.slate, C.paper];
+   };
+   const toneColor = { crimson: C.crimson, gold: C.warn, ok: C.ok, navy: C.ink };
+-  const lbl = { fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: C.slate };
++  const lbl = { fontFamily: MDISPLAY, fontSize: 16, fontWeight: 600, color: C.ink };
+ 
+   return (
+-    <div className="report-page">
++    <MPage className="report-page">
+       <style>{`@media print {
+         .desktop-sidebar, header, nav, .no-print { display: none !important; }
+         main { padding: 0 !important; overflow: visible !important; }
+         .report-grid { display: block !important; }
+         .report-sheet { border: none !important; box-shadow: none !important; }
+         .report-page .table-scroll { overflow: visible !important; }
++        .report-band, .report-band * { background: transparent !important; color: #17171B !important; }
+       }`}</style>
+       <div className="no-print">
+-        <SectionHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูลสด ณ ${nowStr} · เลือกรายงาน แล้วส่งออก CSV หรือพิมพ์เป็น PDF ได้`} />
++        <MHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูลสด ณ ${nowStr} · เลือกรายงาน แล้วส่งออก CSV หรือพิมพ์เป็น PDF ได้`}
++          right={<>
++            <MBtn variant="ghost" icon={Download} onClick={exportCsv} disabled={!report.rows.length}>ส่งออก CSV</MBtn>
++            <MBtn icon={FileText} onClick={printPage}>พิมพ์ / PDF</MBtn>
++          </>} />
+       </div>
+ 
+       <div className="report-grid grid grid-cols-1 lg:grid-cols-4 gap-4">
+         {/* รายการรายงาน */}
+         <div className="no-print lg:col-span-1">
+-          <div className="lg:sticky lg:top-0" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-            <div className="px-4 py-3" style={{ ...lbl, borderBottom: `1px solid ${C.line}` }}>ประเภทรายงาน</div>
++          <div className="lg:sticky lg:top-0 flex flex-col gap-0.5" style={mCard(C, { padding: 10 })}>
++            <div style={{ padding: "8px 10px", fontSize: 12, fontWeight: 600, color: C.slate }}>ประเภทรายงาน</div>
+             {REPORT_CATALOG.map((r, i) => {
+               const on = key === r.key;
+               return (
+-                <button key={r.key} onClick={() => { setKey(r.key); setRq(""); setShowAll(false); }} className="w-full text-left px-4 py-3 flex items-start gap-3"
+-                  style={{ background: on ? C.paper : C.white, borderLeft: `3px solid ${on ? C.crimson : "transparent"}`, borderBottom: i < REPORT_CATALOG.length - 1 ? `1px solid ${C.line}` : "none" }}>
+-                  <span className="shrink-0 font-mono" style={{ fontSize: 11, color: on ? C.crimson : C.mute, paddingTop: 2 }}>{String(i + 1).padStart(2, "0")}</span>
++                <button key={r.key} onClick={() => { setKey(r.key); setRq(""); setShowAll(false); }} aria-pressed={on} className="w-full text-left flex items-center gap-3"
++                  style={{ minHeight: 56, padding: "8px 10px", borderRadius: 10, background: on ? C.tint : "transparent" }}>
++                  <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, fontSize: 12, fontWeight: 600, background: on ? C.crimson : C.soft, color: on ? C.onDark : C.slate }}>{String(i + 1).padStart(2, "0")}</span>
+                   <span className="min-w-0">
+-                    <span className="block" style={{ fontSize: 13, fontWeight: 600, color: on ? C.ink : C.navySoft }}>{r.label}</span>
+-                    <span className="block mt-0.5" style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.4 }}>{r.desc}</span>
++                    <span className="block" style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{r.label}</span>
++                    <span className="block" style={{ fontSize: 12, color: C.slate, lineHeight: 1.4 }}>{r.desc}</span>
+                   </span>
+                 </button>
+               );
+@@ -4493,23 +4591,15 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+         </div>
+ 
+         {/* เอกสารรายงาน */}
+-        <div className="lg:col-span-3 report-sheet" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-          <div className="px-6 pt-6 pb-5" style={{ borderBottom: `2px solid ${C.ink}` }}>
+-            <div className="flex items-start justify-between gap-4 flex-wrap">
+-              <div>
+-                <div style={{ ...lbl, color: C.crimson }}>ศูนย์กีฬา · โรงเรียนอัสสัมชัญธนบุรี</div>
+-                <h2 className="mt-1" style={{ fontSize: 22, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>รายงาน{current.label}</h2>
+-                <p className="mt-1" style={{ fontSize: 13, color: C.slate }}>{current.desc}</p>
+-              </div>
+-              <div className="no-print flex gap-2">
+-                <Btn variant="ghost" small icon={FileText} onClick={printPage}>พิมพ์ / PDF</Btn>
+-                <Btn small icon={Download} onClick={exportCsv} disabled={!report.rows.length}>ส่งออก CSV</Btn>
+-              </div>
+-            </div>
+-            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1" style={{ fontSize: 12, color: C.slate }}>
+-              <div><span style={{ color: C.mute }}>วันที่ออกรายงาน</span> · <b style={{ color: C.ink, fontWeight: 600 }}>{nowStr}</b></div>
+-              <div><span style={{ color: C.mute }}>ผู้จัดทำ</span> · <b style={{ color: C.ink, fontWeight: 600 }}>{user?.name || "-"}</b></div>
+-              <div><span style={{ color: C.mute }}>จำนวนข้อมูล</span> · <b style={{ color: C.ink, fontWeight: 600 }}>{report.rows.length.toLocaleString()} แถว</b></div>
++        <div className="lg:col-span-3 report-sheet" style={mCard(C, { overflow: "hidden", minWidth: 0 })}>
++          <div className="report-band" style={{ background: C.navyDeep, color: "#FFFFFF", padding: "22px 24px" }}>
++            <div style={{ fontSize: 12, color: "#D2D2DA" }}>ศูนย์กีฬา · โรงเรียนอัสสัมชัญธนบุรี</div>
++            <h2 style={{ fontFamily: MDISPLAY, fontSize: 22, fontWeight: 700, color: "#FFFFFF", lineHeight: 1.3, marginTop: 4 }}>รายงาน{current.label}</h2>
++            <p style={{ fontSize: 13, color: "#D2D2DA", marginTop: 2 }}>{current.desc}</p>
++            <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3" style={{ fontSize: 13, color: "#D2D2DA" }}>
++              <span>วันที่ออกรายงาน <b style={{ color: "#FFFFFF", fontWeight: 600 }}>{nowStr}</b></span>
++              <span>ผู้จัดทำ <b style={{ color: "#FFFFFF", fontWeight: 600 }}>{user?.name || "-"}</b></span>
++              <span>จำนวนข้อมูล <b style={{ color: "#FFFFFF", fontWeight: 600 }}>{report.rows.length.toLocaleString()} แถว</b></span>
+             </div>
+           </div>
+ 
+@@ -4518,12 +4608,8 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+             <div style={lbl}>สรุปผล</div>
+             <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+               {report.summary.map((c) => (
+-                <div key={c.label} className="p-3" style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: `3px solid ${toneColor[c.tone] || C.ink}` }}>
+-                  <div style={{ fontSize: 12, color: C.slate }}>{c.label}</div>
+-                  <div className="mt-1" style={{ fontSize: typeof c.value === "string" && c.value.length > 10 ? 16 : 26, fontWeight: 700, lineHeight: 1.15, color: toneColor[c.tone] || C.ink, fontVariantNumeric: "tabular-nums" }}>
+-                    {typeof c.value === "number" ? c.value.toLocaleString() : c.value}
+-                  </div>
+-                </div>
++                <MStat key={c.label} label={c.label} dot={toneColor[c.tone] || C.ink}
++                  value={typeof c.value === "number" ? c.value.toLocaleString() : c.value} />
+               ))}
+             </div>
+           </div>
+@@ -4531,11 +4617,11 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+           {/* กราฟ */}
+           {report.chart && report.chart.data.length > 0 && (
+             <div className="px-6 py-5" style={{ borderBottom: `1px solid ${C.line}` }}>
+-              <div className="flex items-center justify-between">
++              <div className="flex items-center justify-between gap-x-4 gap-y-1 flex-wrap">
+                 <div style={lbl}>{report.chart.title}</div>
+                 {report.chart.bars.length > 1 && (
+                   <div className="flex gap-3" style={{ fontSize: 12, color: C.slate }}>
+-                    {report.chart.bars.map((b) => <span key={b.key} className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5" style={{ background: b.color }} />{b.name}</span>)}
++                    {report.chart.bars.map((b) => <span key={b.key} className="flex items-center gap-1.5 whitespace-nowrap"><span className="inline-block w-2.5 h-2.5" style={{ background: b.color, borderRadius: 3 }} />{b.name}</span>)}
+                   </div>
+                 )}
+               </div>
+@@ -4547,7 +4633,7 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+                     <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 12, fontFamily: FONT, fill: C.ink }} axisLine={{ stroke: C.line }} tickLine={false} interval={0} />
+                     <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} cursor={{ fill: C.paper }} />
+                     {report.chart.bars.map((b) => (
+-                      <Bar key={b.key} dataKey={b.key} name={b.name} fill={b.color} stackId={report.chart.stacked ? "s" : undefined} maxBarSize={18}
++                      <Bar key={b.key} dataKey={b.key} name={b.name} fill={b.color} stackId={report.chart.stacked ? "s" : undefined} maxBarSize={18} radius={report.chart.stacked ? 0 : [0, 4, 4, 0]}
+                         label={report.chart.bars.length === 1 ? { position: "right", fontSize: 11, fontFamily: FONT, fill: C.slate } : undefined} />
+                     ))}
+                   </BarChart>
+@@ -4559,11 +4645,11 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+           {/* ตารางข้อมูล */}
+           <div className="px-6 py-5">
+             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+-              <div style={lbl}>รายละเอียดข้อมูล <span style={{ color: C.mute, textTransform: "none", letterSpacing: 0 }}>({filtered.length.toLocaleString()} แถว{q ? ` จาก ${report.rows.length.toLocaleString()}` : ""})</span></div>
++              <div style={lbl}>รายละเอียดข้อมูล <span style={{ color: C.slate, fontFamily: MFONT, fontSize: 13, fontWeight: 400 }}>({filtered.length.toLocaleString()} แถว{q ? ` จาก ${report.rows.length.toLocaleString()}` : ""})</span></div>
+               {report.rows.length > 0 && (
+                 <div className="no-print relative" style={{ width: 240 }}>
+-                  <Search size={14} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+-                  <input value={rq} onChange={(e) => setRq(e.target.value)} placeholder="กรองข้อมูลในตาราง..." style={{ ...inputStyle, paddingLeft: 30, fontSize: 13 }} />
++                  <Search size={14} style={{ position: "absolute", left: 10, top: 14, color: C.mute }} />
++                  <input value={rq} onChange={(e) => setRq(e.target.value)} placeholder="กรองข้อมูลในตาราง..." aria-label="กรองข้อมูลในตาราง" style={{ ...inputStyle, fontFamily: MFONT, paddingLeft: 30, fontSize: 13, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
+                 </div>
+               )}
+             </div>
+@@ -4574,14 +4660,14 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+                 <div className="table-scroll" style={{ border: `1px solid ${C.line}` }}>
+                   <table className="w-full" style={{ fontSize: 12.5, borderCollapse: "collapse" }}>
+                     <thead>
+-                      <tr style={{ background: C.ink }}>
+-                        <th className="text-right px-3 py-2.5" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.6)", width: 40 }}>#</th>
+-                        {headers.map((h) => <th key={h} className={`px-3 py-2.5 whitespace-nowrap ${numCols.has(h) ? "text-right" : "text-left"}`} style={{ fontSize: 11.5, fontWeight: 600, color: C.white }}>{h}</th>)}
++                      <tr style={{ background: C.paper }}>
++                        <th className="text-right px-3 py-2.5" style={{ fontSize: 12, fontWeight: 600, color: C.slate, width: 40 }}>#</th>
++                        {headers.map((h) => <th key={h} className={`px-3 py-2.5 whitespace-nowrap ${numCols.has(h) ? "text-right" : "text-left"}`} style={{ fontSize: 12.5, fontWeight: 600, color: C.slate }}>{h}</th>)}
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {shown.map((r, i) => (
+-                        <tr key={i} style={{ background: i % 2 ? C.paper : C.white, borderTop: `1px solid ${C.line}` }}>
++                        <tr key={i} style={{ background: C.white, borderTop: `1px solid ${C.line}` }}>
+                           <td className="text-right px-3 py-2 font-mono" style={{ fontSize: 11, color: C.mute }}>{i + 1}</td>
+                           {headers.map((h) => {
+                             const v = r[h];
+@@ -4598,7 +4684,7 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+                 {filtered.length > 25 && (
+                   <div className="no-print mt-3 flex items-center justify-between" style={{ fontSize: 12, color: C.slate }}>
+                     <span>แสดง {shown.length.toLocaleString()} จาก {filtered.length.toLocaleString()} แถว</span>
+-                    <Btn small variant="ghost" onClick={() => setShowAll((x) => !x)}>{showAll ? "แสดงแค่ 25 แถว" : "แสดงทั้งหมด"}</Btn>
++                    <MBtn small variant="ghost" onClick={() => setShowAll((x) => !x)}>{showAll ? "แสดงแค่ 25 แถว" : "แสดงทั้งหมด"}</MBtn>
+                   </div>
+                 )}
+               </>
+@@ -4610,7 +4696,7 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
+           </div>
+         </div>
+       </div>
+-    </div>
++    </MPage>
+   );
+ }
+ 
+@@ -5120,7 +5206,7 @@ function buildCalendarEvents({ tasks, orgEvents, pmSchedule, mineOnly, userName
+     const start = combineDate(t.dueDate, t.dueTime);
+     if (!start) return;
+     const end = t.dueTime ? new Date(start.getTime() + 60 * 60 * 1000) : start;
+-    events.push({ id: `T-${t.id}`, title: `📋 ${t.title}`, start, end, allDay: !t.dueTime, layer: "tasks", raw: t });
++    events.push({ id: `T-${t.id}`, title: t.title, start, end, allDay: !t.dueTime, layer: "tasks", raw: t });
+   });
+ 
+   // ปฏิทินกลางไม่แสดงตารางห้อง/ตารางสอน — ดูได้ที่เมนู "ตารางสอน" แทน
+@@ -5129,21 +5215,30 @@ function buildCalendarEvents({ tasks, orgEvents, pmSchedule, mineOnly, userName
+     const start = combineDate(e.start);
+     const end = combineDate(e.end) || start;
+     if (!start) return;
+-    events.push({ id: `O-${e.id}`, title: `🎪 ${e.title}`, start, end, allDay: true, layer: "org", raw: e });
++    events.push({ id: `O-${e.id}`, title: e.title, start, end, allDay: true, layer: "org", raw: e });
+   });
+ 
+   pmSchedule.forEach((p) => {
+     const start = combineDate(p.nextDate);
+     if (!start) return;
+-    events.push({ id: `P-${p.id}`, title: `🔧 นัดซ่อม: ${p.refName}`, start, end: start, allDay: true, layer: "pm", raw: p });
++    events.push({ id: `P-${p.id}`, title: `นัดซ่อม: ${p.refName}`, start, end: start, allDay: true, layer: "pm", raw: p });
+   });
+ 
+   return events;
+ }
+ 
++function calLayerTone(key, N) {
++  const dark = C.white === C_DARK.white;
++  if (key === "org") return dark ? { bg: "#14213F", fg: "#9DB8F5", dot: "#5B8DEF" } : { bg: "#EAF0FD", fg: "#1D3F99", dot: "#2456C8" };
++  if (key === "pm") return dark ? { bg: "#2B2212", fg: "#E2A541", dot: "#E0A019" } : { bg: "#FFF3DC", fg: "#7A4700", dot: "#E0A019" };
++  return { bg: N.tint, fg: N.tintInk, dot: N.crimson };
++}
++
+ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEvents, setTab, logAction }) {
++  const C = NC();
+   const [visible, setVisible] = useState({ tasks: true, org: true, pm: true });
+   const [view, setView] = useState("month");
++  const [date, setDate] = useState(() => new Date());
+   const [selected, setSelected] = useState(null);
+   const [showNew, setShowNew] = useState(false);
+   const mineOnly = user.role === "L1" || user.role === "L2";
+@@ -5155,6 +5250,14 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
+   );
+   const events = allEvents.filter((e) => visible[e.layer]);
+ 
++  // รายการของเดือนที่กำลังเปิดดู — แผงด้านข้าง
++  const monthEvents = events
++    .filter((e) => e.start.getFullYear() === date.getFullYear() && e.start.getMonth() === date.getMonth())
++    .sort((a, b) => a.start - b.start);
++  const AGENDA_MAX = 8;
++  const monthTitle = date.toLocaleDateString("th-TH", { month: "long", year: "numeric" });
++  const monthShort = date.toLocaleDateString("th-TH", { month: "short" });
++
+   const addEvent = async (form) => {
+     const r = await postToSheetsAwait("addOrgEvent", form);
+     setOrgEvents((prev) => [...prev, { id: r.id, ...form }]);
+@@ -5162,33 +5265,87 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
+     setShowNew(false);
+   };
+ 
++  const calVars = { "--m-ink": C.ink, "--m-sub": C.slate, "--m-line": C.line, "--m-soft": C.soft, "--m-card": C.white, "--m-paper": C.paper, "--m-tint": C.tint };
++
+   return (
+-    <div>
+-      <SectionHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว (ตารางสอนดูที่เมนูตารางสอน)"
+-        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มกิจกรรมองค์กร</Btn>} />
+-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+-        {CAL_LAYERS.map((l) => (
+-          <label key={l.key} className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: C.slate }}>
+-            <input type="checkbox" checked={visible[l.key]} onChange={() => setVisible((v) => ({ ...v, [l.key]: !v[l.key] }))} />
+-            <span className="w-2.5 h-2.5 inline-block" style={{ background: l.color }} /> {l.label}
+-          </label>
+-        ))}
++    <MPage>
++      <MHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว (ตารางสอนดูที่เมนูตารางสอน)"
++        right={manager && <MBtn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มกิจกรรมองค์กร</MBtn>} />
++
++      <div className="flex items-center gap-2 mb-4 flex-wrap" role="group" aria-label="ชั้นข้อมูลปฏิทิน">
++        {CAL_LAYERS.map((l) => {
++          const on = visible[l.key];
++          const tone = calLayerTone(l.key, C);
++          return (
++            <button key={l.key} aria-pressed={on} onClick={() => setVisible((v) => ({ ...v, [l.key]: !v[l.key] }))}
++              className="inline-flex items-center gap-2"
++              style={{ minHeight: 40, padding: "0 14px", borderRadius: 999, fontSize: 13.5, fontWeight: 500, background: C.white, color: on ? C.ink : C.mute, border: `1px solid ${on ? C.lineStrong : C.line}`, opacity: on ? 1 : 0.7 }}>
++              <span className="inline-block shrink-0" style={{ width: 10, height: 10, borderRadius: 3, background: on ? tone.dot : "transparent", border: `1.5px solid ${tone.dot}` }} />
++              <span style={{ textDecoration: on ? "none" : "line-through" }}>{l.label}</span>
++            </button>
++          );
++        })}
+       </div>
+-      <div className="p-3" style={{ background: C.white, border: `1px solid ${C.line}`, height: 640 }}>
+-        <BigCalendar
+-          localizer={calendarLocalizer}
+-          events={events}
+-          startAccessor="start"
+-          endAccessor="end"
+-          view={view}
+-          onView={setView}
+-          views={["month", "week", "day", "agenda"]}
+-          style={{ height: "100%", fontFamily: FONT }}
+-          onSelectEvent={(e) => setSelected(e)}
+-          eventPropGetter={(e) => ({ style: { background: CAL_LAYERS.find((l) => l.key === e.layer)?.color || C.navy, border: "none", fontSize: 12 } })}
+-          messages={{ month: "เดือน", week: "สัปดาห์", day: "วัน", agenda: "รายการ", today: "วันนี้", previous: "ก่อนหน้า", next: "ถัดไป", noEventsInRange: "ไม่มีรายการในช่วงนี้" }}
+-        />
++
++      <div className="flex flex-wrap gap-5 items-start">
++        <div className="m-cal table-scroll" style={{ ...mCard(C, { padding: 14 }), ...calVars, flex: "999 1 520px", minWidth: 0 }}>
++          <div style={{ height: 640, minWidth: 520 }}>
++            <BigCalendar
++              localizer={calendarLocalizer}
++              culture="th"
++              events={events}
++              startAccessor="start"
++              endAccessor="end"
++              view={view}
++              onView={setView}
++              date={date}
++              onNavigate={setDate}
++              views={["month", "week", "day", "agenda"]}
++              style={{ height: "100%", fontFamily: MFONT }}
++              onSelectEvent={(e) => setSelected(e)}
++              eventPropGetter={(e) => { const t = calLayerTone(e.layer, C); return { style: { background: t.bg, color: t.fg, border: "none", fontSize: 12, fontWeight: 500 } }; }}
++              messages={{ month: "เดือน", week: "สัปดาห์", day: "วัน", agenda: "รายการ", today: "วันนี้", previous: "ก่อนหน้า", next: "ถัดไป", noEventsInRange: "ไม่มีรายการในช่วงนี้", showMore: (n) => `+${n} รายการ` }}
++            />
++          </div>
++        </div>
++
++        <section aria-label="รายการเดือนนี้" style={{ ...mCard(C, { padding: 18 }), flex: "1 1 280px", minWidth: 0 }}>
++          <div className="flex items-baseline justify-between gap-2 mb-3">
++            <h2 style={mH2(C)}>รายการเดือนนี้</h2>
++            <span style={{ fontSize: 13, color: C.slate }}>{monthTitle}</span>
++          </div>
++          {monthEvents.length === 0 ? (
++            <div className="text-center" style={{ padding: 22, fontSize: 13, color: C.slate, border: `1px dashed ${C.lineStrong}`, borderRadius: 12 }}>ไม่มีรายการในเดือนนี้</div>
++          ) : (
++            <div className="flex flex-col gap-1">
++              {monthEvents.slice(0, AGENDA_MAX).map((e) => {
++                const tone = calLayerTone(e.layer, C);
++                const layer = CAL_LAYERS.find((l) => l.key === e.layer);
++                return (
++                  <button key={e.id} onClick={() => setSelected(e)} className="w-full flex items-start gap-3 text-left hover:opacity-80" style={{ padding: "6px 0", borderRadius: 10 }}>
++                    <div className="shrink-0 text-center" style={{ width: 44, borderRadius: 10, background: C.bg, padding: "6px 0" }}>
++                      <div style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 17, lineHeight: 1.1, color: C.ink }}>{e.start.getDate()}</div>
++                      <div style={{ fontSize: 11, color: C.slate }}>{monthShort}</div>
++                    </div>
++                    <div className="min-w-0 flex-1">
++                      <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, overflowWrap: "anywhere" }}>{e.title}</div>
++                      <div className="flex items-center gap-1.5" style={{ fontSize: 12, color: C.slate }}>
++                        <span className="inline-block shrink-0" style={{ width: 8, height: 8, borderRadius: 2, background: tone.dot }} />
++                        <span className="truncate">{layer?.label}{e.allDay ? "" : ` · ${e.start.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`}</span>
++                      </div>
++                    </div>
++                  </button>
++                );
++              })}
++            </div>
++          )}
++          {monthEvents.length > AGENDA_MAX && <div className="mt-2" style={{ fontSize: 12, color: C.slate }}>และอีก {monthEvents.length - AGENDA_MAX} รายการ</div>}
++          {monthEvents.length > 0 && (
++            <div className="mt-4 flex"><MBtn variant="ghost" onClick={() => setView("agenda")}>ดูทั้งหมดแบบรายการ</MBtn></div>
++          )}
++        </section>
+       </div>
++
+       {selected && (
+         <Modal title={selected.title} onClose={() => setSelected(null)}>
+           <div className="text-sm space-y-1.5" style={{ color: C.ink }}>
+@@ -5210,7 +5367,7 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
+           <OrgEventForm onSubmit={addEvent} />
+         </Modal>
+       )}
+-    </div>
++    </MPage>
+   );
+ }
+ 
+@@ -5538,6 +5695,7 @@ function docToBase64(file) {
+ }
+ 
+ function KnowledgeBase({ user, docs, setDocs, logAction }) {
++  const C = NC();
+   const manager = canManage(user.role);
+   const [cat, setCat] = useState("ALL");
+   const [q, setQ] = useState("");
+@@ -5584,48 +5742,63 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
+     setEdit(null);
+   };
+ 
++  const catCount = (c) => (c === "ALL" ? docs.length : docs.filter((d) => d.category === c).length);
++  const sorted = [...filtered].sort((x, y) => String(y.updatedDate || "").localeCompare(String(x.updatedDate || "")));
++
+   return (
+-    <div>
+-      <SectionHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ ขั้นตอนการทำงานของศูนย์กีฬา"
+-        right={manager && <Btn onClick={() => setShowNew(true)} icon={Upload}>อัปโหลดเอกสาร</Btn>} />
+-      <div className="flex items-center gap-3 mb-4">
+-        <div className="relative flex-1 max-w-sm">
+-          <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาเอกสาร..." style={{ ...inputStyle, paddingLeft: 32 }} />
++    <MPage>
++      <MHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ ขั้นตอนการทำงานของศูนย์กีฬา"
++        right={manager && <MBtn onClick={() => setShowNew(true)} icon={Upload}>อัปโหลดเอกสาร</MBtn>} />
++
++      <div className="mb-5" style={mCard(C, { padding: 14 })}>
++        <div className="relative mb-3">
++          <Search size={16} style={{ position: "absolute", left: 14, top: 15, color: C.mute }} />
++          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาเอกสาร..." aria-label="ค้นหาเอกสาร"
++            style={{ ...inputStyle, fontFamily: MFONT, fontSize: 15, minHeight: 46, paddingLeft: 40, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
+         </div>
+-        <select value={cat} onChange={(e) => setCat(e.target.value)} style={{ ...inputStyle, width: 220 }}>
+-          <option value="ALL">ทุกหมวด</option>
+-          {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+-        </select>
++        <div className="flex flex-wrap gap-2" role="group" aria-label="หมวดเอกสาร">
++          <MChip on={cat === "ALL"} onClick={() => setCat("ALL")} count={catCount("ALL")}>ทุกหมวด</MChip>
++          {DOC_CATEGORIES.map((c) => <MChip key={c} on={cat === c} onClick={() => setCat(c)} count={catCount(c)}>{c}</MChip>)}
++        </div>
++      </div>
++
++      <div className="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
++        <h2 style={mH2(C)}>{cat === "ALL" ? "ทุกหมวด" : cat} · {sorted.length} เอกสาร</h2>
++        <span style={{ fontSize: 13, color: C.slate }}>เรียงตามวันที่อัปเดตล่าสุด</span>
+       </div>
+-      {filtered.length === 0 ? (
+-        <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีเอกสารในระบบ</div>
++
++      {sorted.length === 0 ? (
++        <div className="text-center" style={{ padding: 32, fontSize: 14, color: C.slate, border: `1px dashed ${C.lineStrong}`, borderRadius: 14, background: C.white }}>
++          {docs.length === 0 ? "ยังไม่มีเอกสารในระบบ" : "ไม่พบเอกสารที่ตรงกับเงื่อนไข"}
++        </div>
+       ) : (
+-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+-          {filtered.map((d) => (
+-            <div key={d.id} className="p-4 flex flex-col" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-              <div className="flex items-start gap-3 mb-3">
+-                <div className="w-9 h-9 shrink-0 flex items-center justify-center" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+-                  <DocIcon name={d.icon} size={17} style={{ color: C.navy }} />
++        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
++          {sorted.map((d) => (
++            <article key={d.id} className="flex flex-col" style={mCard(C, { padding: 18 })}>
++              <div className="flex items-start gap-3.5 mb-3">
++                <div className="shrink-0 flex items-center justify-center" style={{ width: 44, height: 52, borderRadius: 8, background: C.tint, color: C.tintInk }}>
++                  <DocIcon name={d.icon} size={22} strokeWidth={1.8} />
+                 </div>
+                 <div className="min-w-0 flex-1">
+-                  <div className="truncate" style={{ fontSize: 14, fontWeight: 600, color: C.ink }} title={d.title}>{d.title}</div>
+-                  <div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 12, color: C.mute }}>
+-                    <span>{d.category}</span><span>·</span><span className="font-mono">v{d.version}</span>
++                  <h3 style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.4, color: C.ink, overflowWrap: "anywhere" }} title={d.title}>{d.title}</h3>
++                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
++                    <span style={{ padding: "2px 10px", borderRadius: 999, background: C.soft, color: C.ink, fontSize: 12, fontWeight: 500 }}>{d.category}</span>
++                    <span style={{ fontSize: 12, color: C.slate }}>v{d.version}</span>
+                   </div>
+                 </div>
+               </div>
+-              <div className="mb-3" style={{ fontSize: 12, color: C.slate }}>อัปโหลดโดย {d.uploadedBy || "-"} · อัปเดต {d.updatedDate || "-"}</div>
+-              <div className="mt-auto flex items-center justify-between pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
+-                <a href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:underline" style={{ fontSize: 12.5, fontWeight: 600, color: C.navy }}>เปิดเอกสาร <ExternalLink size={12} /></a>
++              <div className="mb-3.5" style={{ fontSize: 13, color: C.slate }}>อัปโหลดโดย {d.uploadedBy || "-"} · อัปเดต {d.updatedDate || "-"}</div>
++              <div className="mt-auto flex items-center gap-2 pt-3.5" style={{ borderTop: `1px solid ${C.line}` }}>
++                <a href={d.url} target="_blank" rel="noreferrer" className="flex-1 inline-flex items-center justify-center gap-1.5 hover:opacity-90"
++                  style={{ minHeight: 44, borderRadius: 10, background: C.inv, color: C.invText, fontSize: 14, fontWeight: 600 }}>เปิดเอกสาร <ExternalLink size={14} /></a>
+                 {manager && (
+-                  <div className="flex items-center gap-1">
+-                    <button onClick={() => setEdit(d)} className="flex items-center gap-1 px-2 py-1 hover:bg-gray-50" style={{ fontSize: 12, color: C.navy, border: `1px solid ${C.line}` }} title="แก้ไขเอกสาร"><Pencil size={12} /> แก้ไข</button>
+-                    <button onClick={() => setConfirmDel(d)} className="flex items-center gap-1 px-2 py-1 hover:bg-gray-50" style={{ fontSize: 12, color: C.crimson, border: `1px solid ${C.line}` }} title="ลบเอกสาร"><X size={12} /> ลบ</button>
+-                  </div>
++                  <>
++                    <button onClick={() => setEdit(d)} aria-label="แก้ไขเอกสาร" title="แก้ไขเอกสาร" className="shrink-0 flex items-center justify-center" style={{ width: 44, height: 44, borderRadius: 10, background: C.white, color: C.ink, border: `1px solid ${C.lineStrong}` }}><Pencil size={16} /></button>
++                    <button onClick={() => setConfirmDel(d)} aria-label="ลบเอกสาร" title="ลบเอกสาร" className="shrink-0 flex items-center justify-center" style={{ width: 44, height: 44, borderRadius: 10, background: C.white, color: C.tintInk, border: `1px solid ${C.lineStrong}` }}><X size={16} /></button>
++                  </>
+                 )}
+               </div>
+-            </div>
++            </article>
+           ))}
+         </div>
+       )}
+@@ -5648,7 +5821,7 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
+           </div>
+         </Modal>
+       )}
+-    </div>
++    </MPage>
+   );
+ }
+ 
+@@ -6029,6 +6202,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule,
+   const [showUrgent, setShowUrgent] = useState(false);
+   const [showPw, setShowPw] = useState(false);
+   const meta = ROLE_META[user.role];
++  const C = NC();
+ 
+   const myTasks = tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name);
+   const myOverdue = myTasks.filter((t) => taskBucket(t) === "overdue").length;
+@@ -6090,169 +6264,204 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule,
+     user.role !== "L0" && { key: "budget", label: user.role === "L3" || user.role === "L4" ? "งบประมาณ" : "งบของฉัน", icon: DollarSign, desc: "ดูโครงการและงบที่รับผิดชอบ" },
+   ].filter(Boolean);
+ 
++  const stats = [
++    { label: "อัตราความสำเร็จงาน", value: `${completionPct}%`, sub: `${myCompleted} / ${myTasks.length} งาน` },
++    (user.role === "L1" || user.role === "L2" || user.role === "L3") && { label: "ตารางสอนของฉัน", value: myPeriods, sub: "คาบ/สัปดาห์" },
++    user.role !== "L0" && { label: "งานของฉัน", value: myTasks.length, sub: "งานทั้งหมด" },
++    user.role !== "L0" && { label: "งานเร่งด่วน", value: myOverdue + myToday, sub: `${myOverdue} เกินกำหนด · ${myToday} ครบกำหนดวันนี้`, color: myOverdue ? C.tintInk : undefined },
++  ].filter(Boolean);
++  const info = [
++    ["Teacher ID", user.id],
++    ["หน่วยงาน", user.dept || "-"],
++    ["ตำแหน่ง/หน้าที่", user.title || "-"],
++    ["เบอร์โทร", user.phone || "-"],
++    ["ระดับสิทธิ์", `${user.role} — ${meta.label}`],
++  ];
++  const onHero = { background: "transparent", color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.35)" };
++
+   return (
+-    <div>
+-      <SectionHead eyebrow="PROFILE" title="โปรไฟล์ของฉัน" sub="ข้อมูลส่วนตัวและทางลัดไปยังงานของคุณ" />
++    <MPage>
+       {showPw && <ChangePasswordModal user={user} onClose={() => setShowPw(false)} />}
+ 
+-      <div className="grid grid-cols-2 gap-4 mb-4">
+-        <div className="p-5 flex flex-col items-center text-center" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-          <div className="relative mb-3">
+-            <button onClick={() => setShowEditInfo(true)} className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden" style={{ background: meta.tint, border: `3px solid ${C.line}` }} title="แก้ไขข้อมูลส่วนตัว">
++      <section className="flex flex-wrap items-center justify-between gap-6 mb-5" style={{ background: C.navyDeep, color: "#FFFFFF", borderRadius: 18, padding: "clamp(20px, 3vw, 32px)" }}>
++        <div className="flex flex-wrap items-center gap-5 min-w-0">
++          <div className="relative shrink-0">
++            <button onClick={() => setShowEditInfo(true)} className="rounded-full flex items-center justify-center overflow-hidden" style={{ width: 88, height: 88, background: C.crimson, border: "3px solid #FFFFFF" }} title="แก้ไขข้อมูลส่วนตัว" aria-label="แก้ไขข้อมูลส่วนตัว">
+               {user.photoUrl ? (
+                 <img src={user.photoUrl} alt={user.name} className="w-full h-full" style={{ objectFit: "cover" }} />
+               ) : (
+-                <span className="text-2xl font-bold text-white">{user.name?.trim()?.[0] || "?"}</span>
++                <span style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 34, color: "#FFFFFF" }}>{user.name?.trim()?.[0] || "?"}</span>
+               )}
+             </button>
+-            <button onClick={() => setShowEditInfo(true)} disabled={uploading}
+-              className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center"
+-              style={{ background: C.crimson, color: C.onDark, border: `2px solid ${C.white}` }} title="แก้ไขข้อมูลส่วนตัว">
+-              <Pencil size={13} />
+-            </button>
+             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+           </div>
+-          {uploading && <div className="text-xs mb-2" style={{ color: C.mute }}>กำลังอัปโหลด...</div>}
+-          {err && <div className="text-xs mb-2" style={{ color: C.crimson }}>{err}</div>}
+-          <div className="text-base font-bold" style={{ color: C.ink }}>{user.name}</div>
+-          <div className="text-xs mt-1" style={{ color: C.mute }}>{user.title || "-"}</div>
+-          <div className="mt-3"><Pill fg={meta.tint} bg={C.paper}>{meta.label}</Pill></div>
++          <div className="min-w-0">
++            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: "#F3A3B1" }}>PROFILE</div>
++            <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: "#FFFFFF", marginTop: 2, overflowWrap: "anywhere" }}>{user.name}</h1>
++            <div className="flex flex-wrap items-center gap-2 mt-1.5">
++              <span style={{ fontSize: 14, color: "#D2D2DA" }}>{user.title || "-"}</span>
++              <span style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,255,255,0.14)", color: "#FFFFFF", fontSize: 12, fontWeight: 600 }}>{meta.label}</span>
++            </div>
++            {uploading && <div className="mt-1.5" style={{ fontSize: 12, color: "#D2D2DA" }}>กำลังอัปโหลด...</div>}
++            {err && <div className="mt-1.5" style={{ fontSize: 12, color: "#F3A3B1" }}>{err}</div>}
++          </div>
+         </div>
+-
+-        {/* circular completion gauge — echoes the "Efficiency" ring style, in our palette */}
+-        <div className="p-5 flex flex-col items-center justify-center text-center" style={{ background: C.navyDeep, border: `1px solid ${C.line}` }}>
+-          <CompletionRing pct={completionPct} />
+-          <div className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.55)" }}>อัตราความสำเร็จงาน</div>
+-          <div className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>{myCompleted} / {myTasks.length} งาน</div>
++        <div className="flex flex-wrap items-center gap-2">
++          <ThemeToggle />
++          <LangToggle />
++          {API_URL && (
++            <button onClick={() => setShowPw(true)} className="inline-flex items-center gap-1.5 whitespace-nowrap" style={{ ...onHero, minHeight: 44, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 500 }}>
++              <KeyRound size={16} /> เปลี่ยนรหัสผ่าน
++            </button>
++          )}
++          <button onClick={() => setShowEditInfo(true)} disabled={uploading} className="inline-flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50" style={{ minHeight: 44, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, background: "#FFFFFF", color: "#17171B" }}>
++            <Pencil size={15} /> แก้ไขข้อมูลส่วนตัว
++          </button>
+         </div>
++      </section>
++
++      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
++        {stats.map((st) => <MStat key={st.label} label={st.label} value={st.value} sub={st.sub} color={st.color} />)}
+       </div>
+ 
+-      <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-        <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+-          <h3 className="text-sm font-bold" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
+-          <div className="flex items-center gap-2">
+-            <ThemeToggle dark={false} />
+-            <LangToggle dark={false} />
+-            {API_URL && <Btn variant="ghost" small icon={KeyRound} onClick={() => setShowPw(true)}>เปลี่ยนรหัสผ่าน</Btn>}
++      {(myOverdue > 0 || myToday > 0) && (() => {
++        const urgent = myTasks.filter((t) => ["overdue", "today"].includes(taskBucket(t)))
++          .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
++        const daysLate = (d) => Math.max(0, Math.round((new Date(TODAY_ISO) - new Date(d)) / 86400000));
++        return (
++          <div className="mb-5" style={{ borderRadius: 14, overflow: "hidden", background: C.tint }}>
++            <button onClick={() => setShowUrgent((x) => !x)} className="w-full flex items-center gap-2 text-left" style={{ minHeight: 48, padding: "0 16px", borderRadius: 0 }} aria-expanded={showUrgent}>
++              <AlertTriangle size={14} style={{ color: C.crimson }} />
++              <span className="flex-1" style={{ fontSize: 13, fontWeight: 600, color: C.tintInk }}>
++                {myOverdue > 0 && `${myOverdue} งานเกินกำหนด`}{myOverdue > 0 && myToday > 0 && " · "}{myToday > 0 && `${myToday} งานครบกำหนดวันนี้`}
++              </span>
++              <span className="flex items-center gap-1" style={{ fontSize: 12, color: C.tintInk }}>{showUrgent ? "ซ่อน" : "ดูรายการ"}<ChevronDown size={14} style={{ transform: showUrgent ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></span>
++            </button>
++            {showUrgent && (
++              <div style={{ background: C.white, border: `1px solid ${C.line}`, borderRadius: "0 0 14px 14px" }}>
++                {urgent.map((t) => {
++                  const late = taskBucket(t) === "overdue";
++                  const pr = { CRITICAL: ["วิกฤต", C.bad], HIGH: ["สูง", C.warn], NORMAL: ["ปกติ", C.slate], LOW: ["ต่ำ", C.mute] }[t.priority] || [t.priority, C.slate];
++                  return (
++                    <button key={t.id} onClick={() => setTab("tasks")} className="w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-gray-50" style={{ borderBottom: `1px solid ${C.line}`, borderRadius: 0 }}>
++                      <div className="min-w-0 flex-1">
++                        <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{t.title || "(ไม่มีชื่องาน)"}</div>
++                        <div className="mt-0.5 flex flex-wrap gap-x-3" style={{ fontSize: 12, color: C.slate }}>
++                          <span>กำหนด {t.dueDate || "-"}{t.dueTime ? ` ${t.dueTime}` : ""}</span>
++                          {t.location && <span>{t.location}</span>}
++                          {t.createdBy && <span>มอบหมายโดย {t.createdBy}</span>}
++                        </div>
++                        {t.description && <div className="mt-0.5 truncate" style={{ fontSize: 12, color: C.mute }}>{t.description}</div>}
++                      </div>
++                      <div className="shrink-0 text-right">
++                        <div style={{ fontSize: 12, fontWeight: 700, color: late ? C.crimson : C.warn }}>{late ? `เกิน ${daysLate(t.dueDate)} วัน` : "วันนี้"}</div>
++                        <div style={{ fontSize: 11, color: pr[1] }}>ความสำคัญ: {pr[0]}</div>
++                      </div>
++                    </button>
++                  );
++                })}
++                <div className="px-3 py-2 flex justify-end">
++                  <button onClick={() => setTab("tasks")} className="flex items-center gap-1 hover:underline" style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>ไปหน้างานทั้งหมด <ChevronRight size={13} /></button>
++                </div>
++              </div>
++            )}
+           </div>
+-        </div>
+-        <div className="grid grid-cols-2 gap-4 text-sm">
+-          <div><div className="text-xs" style={{ color: C.mute }}>Teacher ID</div><div className="font-mono font-medium" style={{ color: C.ink }}>{user.id}</div></div>
+-          <div><div className="text-xs" style={{ color: C.mute }}>หน่วยงาน</div><div className="font-medium" style={{ color: C.ink }}>{user.dept || "-"}</div></div>
+-          <div><div className="text-xs" style={{ color: C.mute }}>ตำแหน่ง/หน้าที่</div><div className="font-medium" style={{ color: C.ink }}>{user.title || "-"}</div></div>
+-          <div><div className="text-xs" style={{ color: C.mute }}>ระดับสิทธิ์</div><div className="font-medium" style={{ color: C.ink }}>{user.role} — {meta.label}</div></div>
+-        </div>
+-        {(myOverdue > 0 || myToday > 0) && (() => {
+-          const urgent = myTasks.filter((t) => ["overdue", "today"].includes(taskBucket(t)))
+-            .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
+-          const daysLate = (d) => Math.max(0, Math.round((new Date(TODAY_ISO) - new Date(d)) / 86400000));
+-          return (
+-            <div className="mt-4" style={{ border: `1px solid ${C.badBg}`, background: C.badBg }}>
+-              <button onClick={() => setShowUrgent((x) => !x)} className="w-full p-3 flex items-center gap-2 text-left" aria-expanded={showUrgent}>
+-                <AlertTriangle size={14} style={{ color: C.crimson }} />
+-                <span className="flex-1" style={{ fontSize: 13, fontWeight: 600, color: C.crimsonDeep }}>
+-                  {myOverdue > 0 && `${myOverdue} งานเกินกำหนด`}{myOverdue > 0 && myToday > 0 && " · "}{myToday > 0 && `${myToday} งานครบกำหนดวันนี้`}
+-                </span>
+-                <span className="flex items-center gap-1" style={{ fontSize: 12, color: C.crimsonDeep }}>{showUrgent ? "ซ่อน" : "ดูรายการ"}<ChevronDown size={14} style={{ transform: showUrgent ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></span>
+-              </button>
+-              {showUrgent && (
+-                <div style={{ background: C.white, borderTop: `1px solid ${C.line}` }}>
+-                  {urgent.map((t) => {
+-                    const late = taskBucket(t) === "overdue";
+-                    const pr = { CRITICAL: ["วิกฤต", C.bad], HIGH: ["สูง", C.warn], NORMAL: ["ปกติ", C.slate], LOW: ["ต่ำ", C.mute] }[t.priority] || [t.priority, C.slate];
++        );
++      })()}
++
++      <div className="flex flex-wrap gap-5 items-start">
++        <div className="flex flex-col gap-5" style={{ flex: "999 1 460px", minWidth: 0 }}>
++          {/* week strip + day's tasks */}
++          {user.role !== "L0" && (
++            <section style={mCard(C, { padding: 20 })}>
++              <div className="flex items-baseline justify-between gap-2 flex-wrap mb-4">
++                <h2 style={mH2(C)}>งานประจำสัปดาห์</h2>
++                <span style={{ fontSize: 13, color: C.slate }}>{new Date(activeIso).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}</span>
++              </div>
++              <div className="grid grid-cols-7 gap-1.5 mb-4">
++                {weekDays.map((d) => {
++                  const iso = isoOf(d);
++                  const isToday = iso === todayIso;
++                  const isActive = iso === activeIso;
++                  const count = tasksByDay(iso).length;
++                  return (
++                    <button key={iso} onClick={() => setSelectedDay(iso === todayIso ? null : iso)} aria-pressed={isActive}
++                      className="flex flex-col items-center justify-center"
++                      style={{ minHeight: 62, borderRadius: 12, background: isActive ? C.crimson : C.white, border: `1px solid ${isActive ? C.crimson : C.line}` }}>
++                      <span style={{ fontSize: 12, color: isActive ? "#FFFFFF" : C.slate }}>{dayLabel[d.getDay()]}</span>
++                      <span style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 17, color: isActive ? "#FFFFFF" : isToday ? C.crimson : C.ink }}>{d.getDate()}</span>
++                      <span className="rounded-full" style={{ width: 5, height: 5, background: count > 0 ? (isActive ? "#FFFFFF" : C.crimson) : "transparent" }} />
++                    </button>
++                  );
++                })}
++              </div>
++
++              {dayTasks.length === 0 ? (
++                <div className="text-center" style={{ padding: 22, fontSize: 14, color: C.slate, border: `1px dashed ${C.lineStrong}`, borderRadius: 12 }}>ไม่มีงานในวันนี้</div>
++              ) : (
++                <div className="flex flex-col gap-2">
++                  {dayTasks.map((t) => {
++                    const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
++                    const done = t.status === "COMPLETED";
+                     return (
+-                      <button key={t.id} onClick={() => setTab("tasks")} className="w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-gray-50" style={{ borderBottom: `1px solid ${C.line}`, borderLeft: `3px solid ${late ? C.crimson : C.warn}` }}>
++                      <div key={t.id} className="flex items-center gap-3" style={{ padding: "10px 12px", borderRadius: 12, background: done ? C.okBg : C.paper }}>
++                        <button onClick={() => toggleDone(t)} aria-label={done ? "ทำเครื่องหมายว่ายังไม่เสร็จ" : "ทำเครื่องหมายว่าเสร็จแล้ว"}
++                          className="rounded-full flex items-center justify-center shrink-0"
++                          style={{ width: 28, height: 28, border: `2px solid ${done ? C.ok : pm.fg}`, background: done ? C.ok : "transparent" }}>
++                          {done && <CheckCircle2 size={14} color="#FFFFFF" />}
++                        </button>
+                         <div className="min-w-0 flex-1">
+-                          <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{t.title || "(ไม่มีชื่องาน)"}</div>
+-                          <div className="mt-0.5 flex flex-wrap gap-x-3" style={{ fontSize: 12, color: C.slate }}>
+-                            <span>กำหนด {t.dueDate || "-"}{t.dueTime ? ` ${t.dueTime}` : ""}</span>
+-                            {t.location && <span>{t.location}</span>}
+-                            {t.createdBy && <span>มอบหมายโดย {t.createdBy}</span>}
+-                          </div>
+-                          {t.description && <div className="mt-0.5 truncate" style={{ fontSize: 12, color: C.mute }}>{t.description}</div>}
++                          <div className="truncate" style={{ fontSize: 14, fontWeight: 500, color: done ? C.slate : C.ink, textDecoration: done ? "line-through" : "none" }}>{t.title}</div>
++                          {t.location && <div style={{ fontSize: 12, color: C.slate }}>{t.location}</div>}
+                         </div>
+-                        <div className="shrink-0 text-right">
+-                          <div style={{ fontSize: 12, fontWeight: 700, color: late ? C.crimson : C.warn }}>{late ? `เกิน ${daysLate(t.dueDate)} วัน` : "วันนี้"}</div>
+-                          <div style={{ fontSize: 11, color: pr[1] }}>ความสำคัญ: {pr[0]}</div>
+-                        </div>
+-                      </button>
++                        {t.dueTime && <span className="shrink-0" style={{ fontSize: 13, color: C.slate, fontVariantNumeric: "tabular-nums" }}>{t.dueTime}</span>}
++                      </div>
+                     );
+                   })}
+-                  <div className="px-3 py-2 flex justify-end">
+-                    <button onClick={() => setTab("tasks")} className="flex items-center gap-1 hover:underline" style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>ไปหน้างานทั้งหมด <ChevronRight size={13} /></button>
+-                  </div>
+                 </div>
+               )}
+-            </div>
+-          );
+-        })()}
+-      </div>
++            </section>
++          )}
+ 
+-      {/* week strip + day's tasks — echoes the date-strip task-app reference, in our palette */}
+-      {user.role !== "L0" && (
+-        <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-          <div className="flex items-center justify-between mb-3">
+-            <h3 className="text-sm font-bold" style={{ color: C.navy }}>งานประจำสัปดาห์</h3>
+-            <span className="text-xs" style={{ color: C.mute }}>{new Date(activeIso).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}</span>
+-          </div>
+-          <div className="grid grid-cols-7 gap-1.5 mb-4">
+-            {weekDays.map((d) => {
+-              const iso = isoOf(d);
+-              const isToday = iso === todayIso;
+-              const isActive = iso === activeIso;
+-              const count = tasksByDay(iso).length;
++          {user.role !== "L0" && <PortfolioSection user={user} logAction={logAction} />}
++        </div>
++
++        <div className="flex flex-col gap-5" style={{ flex: "1 1 300px", minWidth: 0 }}>
++          <section style={mCard(C, { padding: 20 })}>
++            <h2 className="mb-2" style={mH2(C)}>ข้อมูลของฉัน</h2>
++            {info.map(([k, v]) => (
++              <div key={k} className="flex justify-between gap-4" style={{ padding: "10px 0", borderTop: `1px solid ${C.line}`, fontSize: 14 }}>
++                <span style={{ color: C.slate }}>{k}</span>
++                <span className="text-right" style={{ fontWeight: 500, color: C.ink, overflowWrap: "anywhere" }}>{v}</span>
++              </div>
++            ))}
++          </section>
++
++          <section style={mCard(C, { padding: 20 })}>
++            <h2 className="mb-2" style={mH2(C)}>ทางลัด</h2>
++            {links.map((l) => {
++              const Icon = l.icon;
+               return (
+-                <button key={iso} onClick={() => setSelectedDay(iso === todayIso ? null : iso)}
+-                  className="flex flex-col items-center py-2"
+-                  style={{ background: isActive ? C.crimson : C.paper, border: `1px solid ${isActive ? C.crimson : C.line}` }}>
+-                  <span className="text-[10px]" style={{ color: isActive ? "rgba(255,255,255,0.75)" : C.mute }}>{dayLabel[d.getDay()]}</span>
+-                  <span className="text-sm font-bold mt-0.5" style={{ color: isActive ? C.white : isToday ? C.crimson : C.ink }}>{d.getDate()}</span>
+-                  {count > 0 && <span className="w-1 h-1 rounded-full mt-1" style={{ background: isActive ? C.white : C.crimson }} />}
++                <button key={l.key} onClick={() => setTab(l.key)} className="w-full flex items-center gap-3 text-left hover:opacity-80" style={{ minHeight: 56, padding: "6px 0", borderTop: `1px solid ${C.line}`, borderRadius: 0 }}>
++                  <span className="shrink-0 flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: 10, background: C.soft, color: C.ink }}><Icon size={17} /></span>
++                  <span className="min-w-0 flex-1">
++                    <span className="block" style={{ fontSize: 14, fontWeight: 500, color: C.ink }}>{l.label}</span>
++                    <span className="block truncate" style={{ fontSize: 12, color: C.slate }}>{l.desc}</span>
++                  </span>
++                  <ChevronRight size={16} style={{ color: C.slate }} />
+                 </button>
+               );
+             })}
+-          </div>
+-
+-          {dayTasks.length === 0 ? (
+-            <div className="text-xs text-center py-6" style={{ color: C.mute }}>ไม่มีงานในวันนี้ 🎉</div>
+-          ) : (
+-            <div className="space-y-2">
+-              {dayTasks.map((t) => {
+-                const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
+-                const done = t.status === "COMPLETED";
+-                return (
+-                  <div key={t.id} className="flex items-center gap-3 px-3 py-2.5" style={{ background: done ? C.okBg : C.paper, borderLeft: `3px solid ${done ? C.ok : pm.fg}` }}>
+-                    <button onClick={() => toggleDone(t)}
+-                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+-                      style={{ border: `2px solid ${done ? C.ok : C.line}`, background: done ? C.ok : "transparent" }}>
+-                      {done && <CheckCircle2 size={12} color={C.white} />}
+-                    </button>
+-                    <div className="min-w-0 flex-1">
+-                      <div className="text-sm font-medium truncate" style={{ color: done ? C.mute : C.ink, textDecoration: done ? "line-through" : "none" }}>{t.title}</div>
+-                      {t.location && <div className="text-xs" style={{ color: C.mute }}>{t.location}</div>}
+-                    </div>
+-                    {t.dueTime && <span className="text-xs font-mono shrink-0" style={{ color: C.slate }}>{t.dueTime}</span>}
+-                  </div>
+-                );
+-              })}
+-            </div>
+-          )}
++          </section>
+         </div>
+-      )}
+-
+-      <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ทางลัด</h3>
+-      <div className="grid grid-cols-2 gap-4 mb-4">
+-        {links.map((l) => <QuickAction key={l.key} icon={l.icon} title={l.label} desc={l.desc} onClick={() => setTab(l.key)} />)}
+       </div>
+ 
+-      {user.role !== "L0" && <PortfolioSection user={user} logAction={logAction} />}
+-
+       {showEditInfo && (
+         <Modal title="แก้ไขข้อมูลส่วนตัว" onClose={() => setShowEditInfo(false)}>
+           <EditProfileForm user={user} onChangePhoto={pick} uploading={uploading} onSave={saveInfo} onClose={() => setShowEditInfo(false)} />
+         </Modal>
+       )}
+-    </div>
++    </MPage>
+   );
+ }
+ 
+@@ -6270,6 +6479,7 @@ const PORTFOLIO_LEVELS = ["โรงเรียน", "เขต/อำเภอ
+ const portfolioType = (k) => PORTFOLIO_TYPES.find((t) => t.key === k) || PORTFOLIO_TYPES[0];
+ 
+ function PortfolioSection({ user, logAction }) {
++  const C = NC();
+   const [items, setItems] = useState([]);
+   const [state, setState] = useState("loading"); // loading | ready | error
+   const [filter, setFilter] = useState("ALL");
+@@ -6302,43 +6512,44 @@ function PortfolioSection({ user, logAction }) {
+     .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+ 
+   return (
+-    <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+-      <div className="flex items-center justify-between mb-3">
+-        <h3 className="text-sm font-bold flex items-center gap-1.5" style={{ color: C.navy }}><Trophy size={14} /> แฟ้มผลงานของฉัน</h3>
+-        <span className="text-xs" style={{ color: C.mute }}>{items.length} รายการ</span>
++    <section style={mCard(C, { padding: 20 })}>
++      <div className="flex items-baseline justify-between gap-2 mb-4">
++        <h2 style={mH2(C)}>แฟ้มผลงานของฉัน</h2>
++        <span style={{ fontSize: 13, color: C.slate }}>{items.length} รายการ</span>
+       </div>
+ 
+-      <div className="grid grid-cols-2 gap-2 mb-3">
++      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+         {PORTFOLIO_TYPES.map((t) => {
+           const Icon = t.icon;
+           const n = items.filter((it) => it.type === t.key).length;
+           const active = filter === t.key;
+           return (
+-            <div key={t.key} className="p-3 flex items-center gap-2.5 cursor-pointer" onClick={() => setFilter(active ? "ALL" : t.key)}
+-              style={{ background: active ? t.color : C.paper, border: `1px solid ${active ? t.color : C.line}`, borderLeft: `4px solid ${t.color}` }}>
+-              <Icon size={18} style={{ color: active ? C.white : t.color }} />
+-              <div className="min-w-0 flex-1">
+-                <div className="text-xs font-bold truncate" style={{ color: active ? C.white : C.ink }}>{t.label}</div>
+-                <div className="text-[11px]" style={{ color: active ? "rgba(255,255,255,0.8)" : C.mute }}>{n} รายการ</div>
+-              </div>
+-              <button onClick={(e) => { e.stopPropagation(); setAdding(t.key); }} disabled={state === "error"}
+-                className="w-7 h-7 flex items-center justify-center shrink-0" title={`เพิ่ม${t.label}`}
+-                style={{ background: active ? C.white : t.color, color: active ? t.color : C.white, opacity: state === "error" ? 0.4 : 1 }}>
+-                <Plus size={14} />
++            <div key={t.key} className="flex items-center gap-3" style={{ padding: 12, borderRadius: 12, background: active ? C.tint : C.white, border: `1px solid ${active ? C.crimson : C.line}` }}>
++              <button onClick={() => setFilter(active ? "ALL" : t.key)} aria-pressed={active} className="flex items-center gap-3 min-w-0 flex-1 text-left" style={{ minHeight: 44, borderRadius: 8 }}>
++                <span className="shrink-0 flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: 10, background: C.soft, color: t.color }}><Icon size={18} /></span>
++                <span className="min-w-0 flex-1">
++                  <span className="block truncate" style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{t.label}</span>
++                  <span className="block truncate" style={{ fontSize: 12, color: C.slate }}>{n} รายการ</span>
++                </span>
++              </button>
++              <button onClick={() => setAdding(t.key)} disabled={state === "error"}
++                className="flex items-center justify-center shrink-0 disabled:opacity-40" title={`เพิ่ม${t.label}`} aria-label={`เพิ่ม${t.label}`}
++                style={{ width: 44, height: 44, borderRadius: 10, background: C.white, color: C.ink, border: `1px solid ${C.lineStrong}` }}>
++                <Plus size={16} />
+               </button>
+             </div>
+           );
+         })}
+       </div>
+ 
+-      {state === "loading" && <div className="text-xs text-center py-4" style={{ color: C.mute }}>กำลังโหลดผลงาน…</div>}
++      {state === "loading" && <div className="text-center py-4" style={{ fontSize: 13, color: C.slate }}>กำลังโหลดผลงาน…</div>}
+       {state === "error" && (
+-        <div className="text-xs p-3" style={{ background: C.warnBg, color: C.warn }}>
++        <div style={{ fontSize: 13, padding: 12, borderRadius: 12, background: C.warnBg, color: C.ink }}>
+           ยังเชื่อมต่อแฟ้มผลงานไม่ได้ — ต้องอัปเดตไฟล์ Extras.gs ในโปรเจกต์ Apps Script ครุภัณฑ์และ Deploy เวอร์ชันใหม่ก่อน
+         </div>
+       )}
+       {state === "ready" && shown.length === 0 && (
+-        <div className="text-xs text-center py-6" style={{ color: C.mute, border: `1px dashed ${C.line}` }}>
++        <div className="text-center" style={{ padding: 22, fontSize: 14, color: C.slate, border: `1px dashed ${C.lineStrong}`, borderRadius: 12 }}>
+           {filter === "ALL" ? "ยังไม่มีผลงาน — กดปุ่ม + ที่หมวดด้านบนเพื่อเพิ่ม" : `ยังไม่มี${portfolioType(filter).label}`}
+         </div>
+       )}
+@@ -6347,18 +6558,18 @@ function PortfolioSection({ user, logAction }) {
+           {shown.map((it) => {
+             const t = portfolioType(it.type);
+             return (
+-              <div key={it.id} className="px-3 py-2.5" style={{ background: C.paper, borderLeft: `3px solid ${t.color}` }}>
++              <div key={it.id} style={{ padding: "12px 14px", borderRadius: 12, background: C.paper }}>
+                 <div className="flex items-start justify-between gap-2">
+                   <div className="min-w-0">
+-                    <div className="text-sm font-semibold" style={{ color: C.ink }}>{it.title}</div>
+-                    <div className="text-[11px] mt-0.5" style={{ color: C.mute }}>
++                    <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{it.title}</div>
++                    <div className="mt-0.5" style={{ fontSize: 12, color: C.slate }}>
+                       <span style={{ color: t.color, fontWeight: 600 }}>{t.label}</span>
+                       {it.date ? ` · ${it.date}` : ""}{it.organizer ? ` · ${it.organizer}` : ""}{it.level ? ` · ระดับ${it.level}` : ""}{it.hours ? ` · ${it.hours} ชม.` : ""}
+                     </div>
+                   </div>
+-                  <button onClick={() => setConfirmDel(it)} className="shrink-0"><X size={14} style={{ color: C.mute }} /></button>
++                  <button onClick={() => setConfirmDel(it)} className="shrink-0 flex items-center justify-center" aria-label="ลบผลงาน" title="ลบผลงาน" style={{ width: 36, height: 36, borderRadius: 8 }}><X size={16} style={{ color: C.slate }} /></button>
+                 </div>
+-                {it.result && <div className="mt-1.5"><Pill fg={t.color} bg={C.white}>🏅 {it.result}</Pill></div>}
++                {it.result && <div className="mt-1.5"><Pill fg={t.color} bg={C.white}>{it.result}</Pill></div>}
+                 {it.students && <div className="text-xs mt-1.5" style={{ color: C.slate }}>นักเรียน: {it.students}</div>}
+                 {it.detail && <div className="text-xs mt-1 whitespace-pre-line" style={{ color: C.slate }}>{it.detail}</div>}
+                 {it.evidenceUrl && <a href={it.evidenceUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold inline-flex items-center gap-1 mt-1.5" style={{ color: C.navy }}>ดูหลักฐาน/เกียรติบัตร <ExternalLink size={11} /></a>}
+@@ -6382,7 +6593,7 @@ function PortfolioSection({ user, logAction }) {
+           </div>
+         </Modal>
+       )}
+-    </div>
++    </section>
+   );
+ }
+ 
+diff --git a/src/index.css b/src/index.css
+index 42e066e..4501059 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -99,3 +99,51 @@ html[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: #1F2228 !im
+ html[data-theme="dark"] .recharts-default-tooltip { background: #17191E !important; border-color: #2B2E36 !important; color: #E8E9EC; }
+ html[data-theme="dark"] .recharts-cartesian-grid line { stroke: #2B2E36; }
+ html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color: #6E7382; }
++
++/* ============================================================
++   MODERN PAGE KIT (.m-page) — ปฏิทิน / โปรไฟล์ / สถานที่ /
++   คลังความรู้ / รายงาน : พื้นเทากลางเต็มพื้นที่เนื้อหา มุมโค้ง
++   ============================================================ */
++.app-shell .m-page {
++  max-width: none;
++  margin: -1rem -1rem calc(-4.5rem - env(safe-area-inset-bottom));
++  padding: 1.25rem 1rem calc(5.5rem + env(safe-area-inset-bottom));
++  min-height: calc(100% + 5.5rem + env(safe-area-inset-bottom));
++  font-size: 14px;
++  line-height: 1.5;
++}
++@media (min-width: 768px) {
++  .app-shell .m-page { padding: 1.75rem 2rem calc(5.5rem + env(safe-area-inset-bottom)); }
++}
++/* ค่าเริ่มต้นมุมโค้งภายในหน้าแบบใหม่ (specificity ต่ำ — คลาส/inline ทับได้) */
++:where(.m-page) button, :where(.m-page) input, :where(.m-page) select, :where(.m-page) textarea { border-radius: 10px; }
++:where(.m-page) [style*="border: 1px solid"], :where(.m-page) [style*="border: 1px dashed"] { border-radius: 12px; }
++:where(.m-page) input, :where(.m-page) select { min-height: 42px; }
++.m-page :focus-visible { outline: 2px solid #C81E3A; outline-offset: 2px; }
++@media print {
++  .app-shell .m-page { margin: 0 !important; padding: 0 !important; min-height: 0 !important; background: #fff !important; }
++}
++
++/* ---- ปฏิทิน (react-big-calendar) ในหน้าแบบใหม่ ---- */
++.m-cal .rbc-toolbar { gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
++.m-cal .rbc-toolbar .rbc-toolbar-label { font-family: 'Anuphan','IBM Plex Sans Thai',sans-serif; font-weight: 600; font-size: 17px; color: var(--m-ink); }
++.m-cal .rbc-btn-group { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--m-soft); }
++.m-cal .rbc-toolbar button { border: 0; border-radius: 8px; min-height: 36px; padding: 0 12px; font-size: 13px; font-weight: 500; color: var(--m-sub); background: transparent; box-shadow: none; cursor: pointer; }
++.m-cal .rbc-toolbar button:hover, .m-cal .rbc-toolbar button:focus { background: var(--m-card); color: var(--m-ink); }
++.m-cal .rbc-toolbar button.rbc-active, .m-cal .rbc-toolbar button.rbc-active:hover { background: var(--m-card); color: var(--m-ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.14); }
++.m-cal .rbc-month-view, .m-cal .rbc-time-view, .m-cal .rbc-agenda-view table.rbc-agenda-table { border: 1px solid var(--m-line); border-radius: 12px; overflow: hidden; }
++.m-cal .rbc-header { padding: 9px 8px; font-size: 12px; font-weight: 600; color: var(--m-sub); border-color: var(--m-line); text-align: left; }
++.m-cal .rbc-month-row + .rbc-month-row, .m-cal .rbc-day-bg + .rbc-day-bg, .m-cal .rbc-header + .rbc-header,
++.m-cal .rbc-time-content, .m-cal .rbc-time-header-content, .m-cal .rbc-timeslot-group, .m-cal .rbc-time-content > * + * > *,
++.m-cal .rbc-agenda-view table.rbc-agenda-table tbody > tr > td + td, .m-cal .rbc-agenda-view table.rbc-agenda-table tbody > tr + tr,
++.m-cal .rbc-agenda-view table.rbc-agenda-table thead > tr > th { border-color: var(--m-line); }
++.m-cal .rbc-off-range-bg { background: var(--m-paper); }
++.m-cal .rbc-off-range { color: var(--m-sub); opacity: .7; }
++.m-cal .rbc-today { background: var(--m-tint); }
++.m-cal .rbc-date-cell { padding: 6px 8px 2px; text-align: left; font-size: 13px; font-weight: 600; color: var(--m-ink); }
++.m-cal .rbc-date-cell.rbc-now .rbc-button-link { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; border-radius: 13px; background: #C81E3A; color: #fff; }
++.m-cal .rbc-event { border-radius: 6px; padding: 2px 6px; }
++.m-cal .rbc-event:focus { outline: 2px solid #C81E3A; outline-offset: 1px; }
++.m-cal .rbc-show-more { font-size: 12px; font-weight: 500; color: var(--m-sub); background: transparent; }
++.m-cal .rbc-agenda-view table.rbc-agenda-table { color: var(--m-ink); font-size: 13px; }
++.m-cal .rbc-time-slot, .m-cal .rbc-label { color: var(--m-sub); font-size: 12px; }
+-- 
+2.43.0
+

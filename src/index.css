@@ -99,3 +99,51 @@ html[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: #1F2228 !im
 html[data-theme="dark"] .recharts-default-tooltip { background: #17191E !important; border-color: #2B2E36 !important; color: #E8E9EC; }
 html[data-theme="dark"] .recharts-cartesian-grid line { stroke: #2B2E36; }
 html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color: #6E7382; }
+
+/* ============================================================
+   MODERN PAGE KIT (.m-page) — ปฏิทิน / โปรไฟล์ / สถานที่ /
+   คลังความรู้ / รายงาน : พื้นเทากลางเต็มพื้นที่เนื้อหา มุมโค้ง
+   ============================================================ */
+.app-shell .m-page {
+  max-width: none;
+  margin: -1rem -1rem calc(-4.5rem - env(safe-area-inset-bottom));
+  padding: 1.25rem 1rem calc(5.5rem + env(safe-area-inset-bottom));
+  min-height: calc(100% + 5.5rem + env(safe-area-inset-bottom));
+  font-size: 14px;
+  line-height: 1.5;
+}
+@media (min-width: 768px) {
+  .app-shell .m-page { padding: 1.75rem 2rem calc(5.5rem + env(safe-area-inset-bottom)); }
+}
+/* ค่าเริ่มต้นมุมโค้งภายในหน้าแบบใหม่ (specificity ต่ำ — คลาส/inline ทับได้) */
+:where(.m-page) button, :where(.m-page) input, :where(.m-page) select, :where(.m-page) textarea { border-radius: 10px; }
+:where(.m-page) [style*="border: 1px solid"], :where(.m-page) [style*="border: 1px dashed"] { border-radius: 12px; }
+:where(.m-page) input, :where(.m-page) select { min-height: 42px; }
+.m-page :focus-visible { outline: 2px solid #C81E3A; outline-offset: 2px; }
+@media print {
+  .app-shell .m-page { margin: 0 !important; padding: 0 !important; min-height: 0 !important; background: #fff !important; }
+}
+
+/* ---- ปฏิทิน (react-big-calendar) ในหน้าแบบใหม่ ---- */
+.m-cal .rbc-toolbar { gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.m-cal .rbc-toolbar .rbc-toolbar-label { font-family: 'Anuphan','IBM Plex Sans Thai',sans-serif; font-weight: 600; font-size: 17px; color: var(--m-ink); }
+.m-cal .rbc-btn-group { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--m-soft); }
+.m-cal .rbc-toolbar button { border: 0; border-radius: 8px; min-height: 36px; padding: 0 12px; font-size: 13px; font-weight: 500; color: var(--m-sub); background: transparent; box-shadow: none; cursor: pointer; }
+.m-cal .rbc-toolbar button:hover, .m-cal .rbc-toolbar button:focus { background: var(--m-card); color: var(--m-ink); }
+.m-cal .rbc-toolbar button.rbc-active, .m-cal .rbc-toolbar button.rbc-active:hover { background: var(--m-card); color: var(--m-ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+.m-cal .rbc-month-view, .m-cal .rbc-time-view, .m-cal .rbc-agenda-view table.rbc-agenda-table { border: 1px solid var(--m-line); border-radius: 12px; overflow: hidden; }
+.m-cal .rbc-header { padding: 9px 8px; font-size: 12px; font-weight: 600; color: var(--m-sub); border-color: var(--m-line); text-align: left; }
+.m-cal .rbc-month-row + .rbc-month-row, .m-cal .rbc-day-bg + .rbc-day-bg, .m-cal .rbc-header + .rbc-header,
+.m-cal .rbc-time-content, .m-cal .rbc-time-header-content, .m-cal .rbc-timeslot-group, .m-cal .rbc-time-content > * + * > *,
+.m-cal .rbc-agenda-view table.rbc-agenda-table tbody > tr > td + td, .m-cal .rbc-agenda-view table.rbc-agenda-table tbody > tr + tr,
+.m-cal .rbc-agenda-view table.rbc-agenda-table thead > tr > th { border-color: var(--m-line); }
+.m-cal .rbc-off-range-bg { background: var(--m-paper); }
+.m-cal .rbc-off-range { color: var(--m-sub); opacity: .7; }
+.m-cal .rbc-today { background: var(--m-tint); }
+.m-cal .rbc-date-cell { padding: 6px 8px 2px; text-align: left; font-size: 13px; font-weight: 600; color: var(--m-ink); }
+.m-cal .rbc-date-cell.rbc-now .rbc-button-link { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; border-radius: 13px; background: #C81E3A; color: #fff; }
+.m-cal .rbc-event { border-radius: 6px; padding: 2px 6px; }
+.m-cal .rbc-event:focus { outline: 2px solid #C81E3A; outline-offset: 1px; }
+.m-cal .rbc-show-more { font-size: 12px; font-weight: 500; color: var(--m-sub); background: transparent; }
+.m-cal .rbc-agenda-view table.rbc-agenda-table { color: var(--m-ink); font-size: 13px; }
+.m-cal .rbc-time-slot, .m-cal .rbc-label { color: var(--m-sub); font-size: 12px; }

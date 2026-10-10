@@ -6358,12 +6358,12 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
           <ThemeToggle />
           <LangToggle />
           {API_URL && (
-            <button onClick={() => setShowPw(true)} className="inline-flex items-center gap-1.5 whitespace-nowrap" style={{ ...onHero, minHeight: 44, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 500 }}>
-              <KeyRound size={16} /> เปลี่ยนรหัสผ่าน
+            <button onClick={() => setShowPw(true)} className="inline-flex items-center gap-1.5 whitespace-nowrap" style={{ ...onHero, minHeight: 28, padding: "0 10px", borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+              <KeyRound size={13} /> เปลี่ยนรหัสผ่าน
             </button>
           )}
-          <button onClick={() => setShowEditInfo(true)} disabled={uploading} className="inline-flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50" style={{ minHeight: 44, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, background: "#FFFFFF", color: "#17171B" }}>
-            <Pencil size={15} /> แก้ไขข้อมูลส่วนตัว
+          <button onClick={() => setShowEditInfo(true)} disabled={uploading} className="inline-flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50" style={{ minHeight: 28, padding: "0 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "#FFFFFF", color: "#17171B" }}>
+            <Pencil size={13} /> แก้ไขข้อมูลส่วนตัว
           </button>
         </div>
       </section>

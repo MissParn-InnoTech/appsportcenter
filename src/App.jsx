@@ -1170,6 +1170,7 @@ export default function App() {
   const [combinedSport, setCombinedSport] = useState(() => readScheduleCache().combined || []);
   const [scheduleLoaded, setScheduleLoaded] = useState(() => !!readScheduleCache().savedAt);
   const [scheduleAssign, setScheduleAssign] = useState(() => readScheduleCache().assign || {});
+  const updateScheduleAssign = (name, list) => setScheduleAssign((m) => { const n = { ...m, [name]: list }; writeScheduleCache({ assign: n }); return n; });
   const allSchedule = useMemo(() => mergeSchedules(schedule, teachingRows), [schedule, teachingRows]);
 
   // persistence — Google Sheets backend when API_URL is set, else local shared storage
@@ -1319,7 +1320,7 @@ export default function App() {
           {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} repairs={repairs} damages={damages} tasks={tasks} borrows={borrows} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} schedule={allSchedule} tasks={tasks} setStaffList={setStaffList} user={user} logAction={logAction} setTab={setTab} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} scheduleAssign={scheduleAssign} onScheduleAssign={updateScheduleAssign} />}
           {tab === "substitute" && <SubstituteEngine user={user} schedule={allSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
@@ -1327,7 +1328,7 @@ export default function App() {
           {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
           {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
-          {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} scheduleAssign={scheduleAssign} onScheduleAssign={(name, list) => setScheduleAssign((m) => { const n = { ...m, [name]: list }; writeScheduleCache({ assign: n }); return n; })} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
+          {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} scheduleAssign={scheduleAssign} onScheduleAssign={updateScheduleAssign} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
           {tab === "reports" && <Reports user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} />}
           {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} repairs={repairs} pmSchedule={pmSchedule} docs={docs} actionsLog={actionsLog} logAction={logAction} setTab={setTab} />}
         </main>
@@ -3092,7 +3093,8 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true, combinedSport = [] }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true, combinedSport = [], scheduleAssign = {}, onScheduleAssign }) {
+  const [openSchedule, setOpenSchedule] = useState(null);
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -3257,13 +3259,32 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
           <div className="grid grid-cols-2 gap-3">
-            {workload.map((w) => (
-              <div key={w.teacher} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${C.line}` }}>
-                <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
-                <span className="text-xs shrink-0" style={{ color: C.slate }}>{w.periods} คาบ · {w.hours.toFixed(1)} ชม./สัปดาห์</span>
-              </div>
-            ))}
+            {workload.map((w) => {
+              const who = scheduleAssign[w.teacher] || [];
+              return (
+                <button key={w.teacher} onClick={() => setOpenSchedule(w.teacher)} className="text-left px-3 py-2" style={{ border: `1px solid ${C.line}` }} title="กดเพื่อดูตารางสอนและมอบหมายครู">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
+                    <span className="text-xs shrink-0" style={{ color: C.slate }}>{w.periods} คาบ · {w.hours.toFixed(1)} ชม./สัปดาห์</span>
+                  </div>
+                  <div className="text-[11px] truncate mt-0.5" style={{ color: who.length ? C.slate : C.mute }}>{who.length ? `ครูผู้สอน: ${who.join(", ")}` : "ยังไม่ได้มอบหมายครู"}</div>
+                </button>
+              );
+            })}
           </div>
+          {openSchedule && (
+            <ScheduleAssignModal
+              key={openSchedule}
+              name={openSchedule}
+              rows={sportRows.filter((r) => r.teacher === openSchedule)}
+              assignees={scheduleAssign[openSchedule] || []}
+              staffList={staffList}
+              canAssign={manager}
+              by={user.name || user.id || ""}
+              onSaved={(list) => onScheduleAssign && onScheduleAssign(openSchedule, list)}
+              onClose={() => setOpenSchedule(null)}
+            />
+          )}
         </div>
       )}
 

@@ -18,6 +18,7 @@ import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "@fontsource/teko/700.css";
 import { applyLang, getLang } from "./i18n.js";
+import { GUIDES } from "./guides.js";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { th } from "date-fns/locale/th";
 
@@ -733,16 +734,60 @@ function Btn({ children, onClick, variant = "primary", disabled, icon: Icon, sma
   );
 }
 
+/* แถบคู่มือการใช้งานประจำหน้า — ย่อ/ขยายได้ อยู่ใต้หัวข้อของทุกหน้า (เนื้อหาอยู่ใน guides.js) */
+function GuideBar({ id }) {
+  const g = GUIDES[id];
+  const [open, setOpen] = useState(false);
+  if (!g) return null;
+  const N = NC();
+  const panelId = `guide-${String(id).replace(/[^A-Za-z0-9]+/g, "-")}`;
+  return (
+    <div className="no-print mb-5" data-no-i18n style={{ background: N.white, border: `1px solid ${N.line}`, borderLeft: `3px solid ${N.crimson}`, borderRadius: 10 }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={panelId}
+        className="w-full flex items-center gap-2 text-left" style={{ padding: "10px 14px", color: N.ink, background: "transparent" }}>
+        <BookOpen size={16} style={{ color: N.crimson, flexShrink: 0 }} />
+        <span style={{ fontSize: 14, fontWeight: 600 }}>คู่มือการใช้งานหน้านี้</span>
+        {!open && <span className="hidden sm:inline truncate" style={{ fontSize: 13, color: N.slate, minWidth: 0 }}>· {g.what}</span>}
+        <ChevronDown size={16} style={{ marginLeft: "auto", flexShrink: 0, color: N.slate, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && (
+        <div id={panelId} style={{ padding: "2px 14px 14px 38px", fontSize: 14, lineHeight: 1.7, color: N.ink }}>
+          <p style={{ color: N.slate, maxWidth: "70ch" }}>{g.what}</p>
+          {g.steps?.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", color: N.crimson, marginTop: 10 }}>ขั้นตอน</div>
+              <ol style={{ listStyle: "decimal", paddingLeft: 20, maxWidth: "70ch" }}>
+                {g.steps.map((t, i) => <li key={i}>{t}</li>)}
+              </ol>
+            </>
+          )}
+          {g.tips?.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", color: N.crimson, marginTop: 10 }}>ข้อควรรู้</div>
+              <ul style={{ listStyle: "disc", paddingLeft: 20, maxWidth: "70ch" }}>
+                {g.tips.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SectionHead({ eyebrow, title, sub, right }) {
   return (
-    <div className="flex items-end justify-between mb-5 pb-4" style={{ borderBottom: `2px solid ${C.navy}` }}>
-      <div>
-        <div className="text-xs font-semibold tracking-wide mb-1" style={{ color: C.crimson }}>{eyebrow}</div>
-        <h1 className="text-2xl font-bold" style={{ color: C.ink }}>{title}</h1>
-        {sub && <p className="text-sm mt-1" style={{ color: C.slate }}>{sub}</p>}
+    <>
+      <div className="flex items-end justify-between mb-5 pb-4" style={{ borderBottom: `2px solid ${C.navy}` }}>
+        <div>
+          <div className="text-xs font-semibold tracking-wide mb-1" style={{ color: C.crimson }}>{eyebrow}</div>
+          <h1 className="text-2xl font-bold" style={{ color: C.ink }}>{title}</h1>
+          {sub && <p className="text-sm mt-1" style={{ color: C.slate }}>{sub}</p>}
+        </div>
+        {right}
       </div>
-      {right}
-    </div>
+      <GuideBar id={eyebrow} />
+    </>
   );
 }
 
@@ -862,6 +907,7 @@ function MPage({ children, innerRef, className = "" }) {
 function MHead({ eyebrow, title, sub, right }) {
   const N = NC();
   return (
+    <>
     <div className="flex items-end justify-between gap-4 flex-wrap mb-5">
       <div className="min-w-0">
         {eyebrow && <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: N.crimson }}>{eyebrow}</div>}
@@ -870,6 +916,8 @@ function MHead({ eyebrow, title, sub, right }) {
       </div>
       {right && <div className="flex items-center gap-2 flex-wrap">{right}</div>}
     </div>
+    <GuideBar id={eyebrow} />
+    </>
   );
 }
 

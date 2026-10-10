@@ -147,3 +147,6 @@ html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::pl
 .m-cal .rbc-show-more { font-size: 12px; font-weight: 500; color: var(--m-sub); background: transparent; }
 .m-cal .rbc-agenda-view table.rbc-agenda-table { color: var(--m-ink); font-size: 13px; }
 .m-cal .rbc-time-slot, .m-cal .rbc-label { color: var(--m-sub); font-size: 12px; }
+
+/* แถบคู่มือการใช้งานไม่ต้องพิมพ์ออกไปกับรายงาน */
+@media print { .no-print { display: none !important; } }

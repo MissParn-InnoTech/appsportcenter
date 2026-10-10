@@ -3409,17 +3409,22 @@ function SportScheduleBoard({ rows }) {
       {sportSummary.length > 0 && (
         <div className="p-3 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <div className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: C.navy }}><Trophy size={14} /> กีฬาที่มีการสอน ({sportSummary.length} กีฬา)</div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setSport("")} className="px-2.5 py-1.5 text-xs font-semibold"
-              style={!sport ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate, border: `1px solid ${C.line}` }}>ทั้งหมด</button>
+          <select value={sport} onChange={(e) => setSport(e.target.value)} aria-label="เลือกกีฬา"
+            style={{ ...inputStyle, width: "100%", maxWidth: 420 }}>
+            <option value="">ทั้งหมด</option>
             {sportSummary.map((x) => (
-              <button key={x.name} onClick={() => setSport(sport === x.name ? "" : x.name)} className="px-2.5 py-1.5 text-left"
-                style={sport === x.name ? { background: C.crimson, color: C.onDark } : { background: C.paper, color: C.ink, border: `1px solid ${C.line}` }}>
-                <div className="text-xs font-bold">{x.name} <span style={{ opacity: 0.75 }}>· {x.periods} คาบ/สัปดาห์</span></div>
-                <div className="text-[10px]" style={{ opacity: 0.8 }}>{[...x.teachers].join(", ")}{x.rooms.size ? ` · ${[...x.rooms].join(", ")}` : ""}</div>
-              </button>
+              <option key={x.name} value={x.name}>{x.name} · {x.periods} คาบ/สัปดาห์</option>
             ))}
-          </div>
+          </select>
+          {(() => {
+            const x = sportSummary.find((s) => s.name === sport);
+            if (!x) return null;
+            return (
+              <div className="text-xs mt-2" style={{ color: C.slate }}>
+                {[...x.teachers].join(", ")}{x.rooms.size ? ` · ${[...x.rooms].join(", ")}` : ""}
+              </div>
+            );
+          })()}
         </div>
       )}
 

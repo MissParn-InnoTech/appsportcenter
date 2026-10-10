@@ -295,38 +295,83 @@ function sportNameOf(t) {
 }
 const NOT_SPORT_DEPT = /^(ครูประจำระดับ|หัวหน้า)/;
 
-/* ตารางรวมกีฬา — ใช้ข้อมูลจากแท็บ "ตารางรวมกีฬา" เท่านั้น (ห้องเรียนที่มีคาบกีฬาในแต่ละคาบ)
+// แท็บ "ระดับชั้น" (ครูประจำระดับ ป.1–ม.6 และแผนก EP) — ใช้เป็นฐานของตารางรวมกีฬา
+const LEVEL_TAB_RE = /^ครูประจำระดับ|EP/i;
+function levelLabelOf(t) {
+  const n = String(t.name || t.sheetName || "").trim();
+  const g = n.match(/([ปม])\s*\.?\s*(\d)\s*$/);
+  if (/EP/i.test(n)) return n.slice(n.search(/EP/i)).trim();
+  return g ? `${g[1]}.${g[2]}` : n.replace(/^ครูประจำระดับ\s*/, "");
+}
+function levelOrder(label) {
+  const g = label.match(/^([ปม])\.(\d)$/);
+  if (g) return (g[1] === "ป" ? 0 : 10) + Number(g[2]);
+  return 100; // EP ต่อท้าย
+}
+// ชื่อห้องแบบระบุระดับ: "1/3" ของ ป.1 → "ป.1/3" (กันสับสนกับ ม.1/3), ห้อง EP → "EP 7B"
+function classLabelOf(level, c) {
+  if (/^EP/i.test(level)) return /^EP/i.test(c) ? c : `EP ${c}`;
+  const g = level.match(/^([ปม])\.(\d)$/);
+  if (g && new RegExp(`^${g[2]}\\s*/`).test(c)) return `${g[1]}.${c}`;
+  return `${level} ${c}`;
+}
+
+/* ตารางรวมกีฬา — รวมทุกระดับชั้น ป.1–ม.6 และ EP จากแท็บ "ครูประจำระดับ …" / "… EP …" ทุกแท็บ
+   (เดิมใช้เฉพาะแท็บ "ตารางรวมกีฬา" ซึ่งมีข้อมูลแค่ ป.1–3 จึงเห็นไม่ครบทุกระดับ)
    แล้วจับคู่กับแท็บของครูผู้สอนแต่ละกีฬาในวัน/คาบเดียวกันที่มีห้องเรียนตรงกัน
-   เพื่อบอกว่าคาบนั้นมีการสอนกีฬาอะไรบ้าง */
+   เพื่อบอกว่าคาบนั้นมีการสอนกีฬาอะไรบ้าง — ถ้าไม่มีแท็บระดับชั้นเลย จะกลับไปใช้แท็บ "ตารางรวมกีฬา" */
 function buildCombinedSport(data) {
   const teachers = data.teachers || [];
-  const combinedTab = teachers.find((t) => /รวมกีฬา/.test(t.sheetName || "")) || teachers.find((t) => /รวม/.test(t.sheetName || ""));
-  if (!combinedTab) return [];
-  const sportTeachers = teachers.filter((t) => t.id !== combinedTab.id && !/รวม/.test(t.sheetName || "") && !NOT_SPORT_DEPT.test(t.dept || ""));
+  const isCombined = (t) => /รวม/.test(t.sheetName || "");
+  const isLevel = (t) => !isCombined(t) && LEVEL_TAB_RE.test(t.name || t.sheetName || "");
+  let levelTabs = teachers.filter(isLevel);
+  let fallback = false;
+  if (!levelTabs.length) {
+    const combinedTab = teachers.find((t) => /รวมกีฬา/.test(t.sheetName || "")) || teachers.find(isCombined);
+    if (!combinedTab) return [];
+    levelTabs = [combinedTab]; fallback = true;
+  }
+  const levelOf = new Map(levelTabs.map((t) => [t.id, fallback ? "" : levelLabelOf(t)]));
+  const sportTeachers = teachers.filter((t) => !levelOf.has(t.id) && !isCombined(t) && !NOT_SPORT_DEPT.test(t.dept || "") && !NOT_SPORT_DEPT.test(t.name || ""));
   const byTeacher = new Map(sportTeachers.map((t) => [t.id, t]));
   const others = data.slots.filter((s) => byTeacher.has(s.teacherId));
-  return data.slots
-    .filter((s) => s.teacherId === combinedTab.id && s.start && s.end && s.day)
-    .map((s) => {
-      const cls = new Set(s.classes || []);
-      const seen = new Set();
-      const sports = [];
-      others.forEach((o) => {
-        if (o.dayIndex !== s.dayIndex || o.period !== s.period) return;
-        const overlap = (o.classes || []).filter((c) => cls.has(c));
-        if (cls.size && !overlap.length) return; // ต้องมีห้องเรียนตรงกันอย่างน้อย 1 ห้อง
-        const t = byTeacher.get(o.teacherId);
-        const key = t.id;
-        if (seen.has(key)) return;
-        seen.add(key);
-        sports.push({ name: sportNameOf(t), teacher: t.name, room: o.room || "", classes: overlap.length ? overlap : (o.classes || []), subject: o.subject || "" });
-      });
-      return {
-        id: `CS-${s.id}`, day: s.day, dayIndex: s.dayIndex, period: s.period, start: s.start, end: s.end,
-        classes: s.classes || [], group: (s.classes || []).join(", ") || s.subject || s.raw || "",
-        sports: sports.sort((a, b) => a.name.localeCompare(b.name, "th")),
-      };
+
+  // รวมทุกระดับที่อยู่วัน/คาบเดียวกันให้เป็นการ์ดเดียว
+  const groups = new Map();
+  data.slots.forEach((s) => {
+    if (!levelOf.has(s.teacherId) || !s.start || !s.end || !s.day) return;
+    const key = `${s.dayIndex}-${s.period}`;
+    let g = groups.get(key);
+    if (!g) { g = { id: `CS-${key}`, day: s.day, dayIndex: s.dayIndex, period: s.period, start: s.start, end: s.end, raw: new Set(), levels: new Map() }; groups.set(key, g); }
+    const level = levelOf.get(s.teacherId);
+    const list = (s.classes && s.classes.length) ? s.classes : [s.subject || s.raw || ""].filter(Boolean);
+    const lv = g.levels.get(level) || { name: level, classes: [], room: "" };
+    list.forEach((c) => { const label = level ? classLabelOf(level, c) : c; if (!lv.classes.includes(label)) lv.classes.push(label); });
+    if (s.room && !lv.room) lv.room = s.room;
+    g.levels.set(level, lv);
+    (s.classes || []).forEach((c) => g.raw.add(c));
+  });
+
+  return [...groups.values()].map((g) => {
+    const seen = new Set();
+    const sports = [];
+    others.forEach((o) => {
+      if (o.dayIndex !== g.dayIndex || o.period !== g.period) return;
+      const overlap = (o.classes || []).filter((c) => g.raw.has(c));
+      if (g.raw.size && !overlap.length) return; // ต้องมีห้องเรียนตรงกันอย่างน้อย 1 ห้อง
+      const t = byTeacher.get(o.teacherId);
+      if (seen.has(t.id)) return;
+      seen.add(t.id);
+      sports.push({ name: sportNameOf(t), teacher: t.name, room: o.room || "", classes: overlap.length ? overlap : (o.classes || []), subject: o.subject || "" });
     });
+    const levels = [...g.levels.values()].filter((l) => l.name).sort((a, b) => levelOrder(a.name) - levelOrder(b.name) || a.name.localeCompare(b.name, "th"));
+    const classes = (levels.length ? levels : [...g.levels.values()]).flatMap((l) => l.classes);
+    return {
+      id: g.id, day: g.day, dayIndex: g.dayIndex, period: g.period, start: g.start, end: g.end,
+      classes, group: classes.join(", "), levels,
+      sports: sports.sort((a, b) => a.name.localeCompare(b.name, "th")),
+    };
+  }).sort((a, b) => a.dayIndex - b.dayIndex || a.start.localeCompare(b.start));
 }
 
 // รวมตารางจาก 2 แหล่ง — ถ้าครู/วัน/เวลาเดียวกันมีอยู่แล้ว ให้ใช้แถวเดิม (อาจแก้ไขได้)
@@ -3114,23 +3159,12 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   // หัวหน้าที่ไม่มีคาบสอนของตัวเอง — เปิดหน้าให้เจอ "ตารางรวมกีฬา" เลย
   const [managerViewMine, setManagerViewMine] = useState(() => !manager || myPeriodCount > 0);
   useEffect(() => { if (manager) setManagerViewMine(myPeriodCount > 0); }, [manager, myPeriodCount]);
-  // L3 หัวหน้า — มุมมองที่ 3 "ตารางครูทุกคน": เลือกชื่อแล้วเห็นตารางสอนของคนนั้นทันที
-  const [viewAll, setViewAll] = useState(false);
-  const [pickTeacher, setPickTeacher] = useState("");
-  const all = manager && viewAll;
-  const mine = hasOwnSchedule && !all && (!manager || managerViewMine);
+  const mine = hasOwnSchedule && (!manager || managerViewMine);
   // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
   // ดึงมาจากชีตตารางสอน (เช่น "ม.ชาญวิทย์ พึ่งอิ่ม") อาจสะกดคำนำหน้าไม่ตรงกับชื่อที่
   // login เข้ามา (เช่น "นายชาญวิทย์ พึ่งอิ่ม" จากชีตบุคลากร)
   const sportRows = useMemo(() => schedule.filter((s) => !isRoomScheduleRow(s)), [schedule]);
-  const teacherNames = useMemo(
-    () => [...new Set(sportRows.map((s) => s.teacher).filter(Boolean))].sort((a, b) => a.localeCompare(b, "th")),
-    [sportRows]
-  );
-  const selTeacher = teacherNames.includes(pickTeacher) ? pickTeacher : (teacherNames[0] || "");
-  const rows = all
-    ? sportRows.filter((s) => s.teacher === selTeacher)
-    : mine
+  const rows = mine
     ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name))
     : canSeeSport ? combinedSport : [];
 
@@ -3193,26 +3227,21 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
   return (
     <div>
-      <SectionHead eyebrow="SCHEDULE" title={all ? "ตารางครูทุกคน" : mine ? "ตารางสอนของฉัน" : "ตารางรวมกีฬา"}
-        sub={all ? `${teacherNames.length} ตาราง — เลือกชื่อเพื่อดูตารางสอนรายบุคคล` : mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบ — จากชีต "ตารางรวมกีฬา" พร้อมกีฬาที่สอนในแต่ละคาบ`}
+      <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางรวมกีฬา"}
+        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบ — รวมทุกระดับชั้น ป.1–ม.6 และ EP พร้อมกีฬาที่สอนในแต่ละคาบ`}
         right={
           <div className="flex items-center gap-2">
             {manager && (
               <div className="flex items-center" style={{ border: `1px solid ${C.line}` }}>
-                <button onClick={() => { setViewAll(false); setManagerViewMine(true); }}
+                <button onClick={() => setManagerViewMine(true)}
                   className="px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={!viewAll && managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  style={managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
                   ตารางของฉัน
                 </button>
-                <button onClick={() => { setViewAll(false); setManagerViewMine(false); }}
+                <button onClick={() => setManagerViewMine(false)}
                   className="px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={!viewAll && !managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  style={!managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
                   ตารางรวมกีฬา
-                </button>
-                <button onClick={() => setViewAll(true)}
-                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={viewAll ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
-                  ตารางครูทุกคน
                 </button>
               </div>
             )}
@@ -3220,31 +3249,10 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
           </div>
         } />
 
-      {all && teacherNames.length > 0 && (
-        <div className="p-3 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-          <div className="text-sm font-bold mb-2 flex items-center justify-between gap-2" style={{ color: C.navy }}>
-            <span>เลือกตารางสอน ({teacherNames.length})</span>
-            <span className="text-xs font-normal" style={{ color: C.slate }}>
-              {selTeacher} · {rows.length} คาบ/สัปดาห์{(scheduleAssign[selTeacher] || []).length ? ` · ครูผู้สอน: ${scheduleAssign[selTeacher].join(", ")}` : ""}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5" style={{ maxHeight: 132, overflowY: "auto" }}>
-            {teacherNames.map((n) => (
-              <button key={n} onClick={() => setPickTeacher(n)} className="px-2.5 py-1.5 text-xs font-semibold"
-                style={n === selTeacher ? { background: C.crimson, color: C.onDark } : { background: C.paper, color: C.ink, border: `1px solid ${C.line}` }}>
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
-          {!loaded ? "กำลังโหลดตารางสอน…" : all ? "ยังไม่มีตารางสอนรายบุคคลในระบบ" : !mine ? "ไม่พบข้อมูลในชีต \"ตารางรวมกีฬา\"" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
+          {!loaded ? "กำลังโหลดตารางสอน…" : !mine ? "ไม่พบข้อมูลในชีต \"ตารางรวมกีฬา\"" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
         </div>
-      ) : all ? (
-        <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : mine ? (
         <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : (
@@ -3375,6 +3383,18 @@ function SportScheduleBoard({ rows }) {
   const todayName = DAYS[(new Date().getDay() + 6) % 7];
   const [day, setDay] = useState(dayList.includes(todayName) ? todayName : dayList[0]);
   const [sport, setSport] = useState("");
+  const [level, setLevel] = useState("");
+
+  // สรุประดับชั้นที่มีคาบกีฬาทั้งสัปดาห์ (ป.1–ม.6 และ EP)
+  const levelSummary = useMemo(() => {
+    const m = new Map();
+    rows.forEach((r) => (r.levels || []).forEach((lv) => {
+      const x = m.get(lv.name) || { name: lv.name, periods: 0, classes: new Set() };
+      x.periods += 1; lv.classes.forEach((c) => x.classes.add(c));
+      m.set(lv.name, x);
+    }));
+    return [...m.values()].sort((a, b) => levelOrder(a.name) - levelOrder(b.name) || a.name.localeCompare(b.name, "th"));
+  }, [rows]);
 
   // สรุปกีฬาที่มีการสอนทั้งสัปดาห์: จำนวนคาบ + ครูผู้สอน + สถานที่
   const sportSummary = useMemo(() => {
@@ -3387,12 +3407,29 @@ function SportScheduleBoard({ rows }) {
     return [...m.values()].sort((a, b) => b.periods - a.periods);
   }, [rows]);
 
-  const match = (r) => !sport || (r.sports || []).some((sp) => sp.name === sport);
+  const match = (r) => (!sport || (r.sports || []).some((sp) => sp.name === sport))
+    && (!level || (r.levels || []).some((lv) => lv.name === level));
   const dayRows = rows.filter((r) => r.day === day && match(r)).sort((a, b) => a.start.localeCompare(b.start));
   const countOf = (d) => rows.filter((r) => r.day === d && match(r)).length;
 
   return (
     <div className="mb-6">
+      {levelSummary.length > 0 && (
+        <div className="p-3 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: C.navy }}><Users size={14} /> ระดับชั้นที่มีคาบกีฬา ({levelSummary.length} ระดับ)</div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setLevel("")} className="px-2.5 py-1.5 text-xs font-semibold"
+              style={!level ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate, border: `1px solid ${C.line}` }}>ทุกระดับ</button>
+            {levelSummary.map((x) => (
+              <button key={x.name} onClick={() => setLevel(level === x.name ? "" : x.name)} className="px-2.5 py-1.5 text-left"
+                style={level === x.name ? { background: C.crimson, color: C.onDark } : { background: C.paper, color: C.ink, border: `1px solid ${C.line}` }}>
+                <div className="text-xs font-bold">{x.name} <span style={{ opacity: 0.75 }}>· {x.periods} คาบ/สัปดาห์</span></div>
+                <div className="text-[10px]" style={{ opacity: 0.8 }}>{x.classes.size} ห้อง</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {sportSummary.length > 0 && (
         <div className="p-3 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <div className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: C.navy }}><Trophy size={14} /> กีฬาที่มีการสอน ({sportSummary.length} กีฬา)</div>
@@ -3420,20 +3457,32 @@ function SportScheduleBoard({ rows }) {
       </div>
 
       {dayRows.length === 0 ? (
-        <div className="p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่มีคาบ{sport ? ` ${sport}` : ""}ในวัน{day}</div>
+        <div className="p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่มีคาบ{sport ? ` ${sport}` : ""}{level ? ` ${level}` : ""}ในวัน{day}</div>
       ) : (
         <div className="space-y-2">
           {dayRows.map((r) => {
             const col = dayColor(r.day);
+            const shownLevels = (r.levels || []).filter((lv) => !level || lv.name === level);
+            const shownClasses = shownLevels.length ? shownLevels.flatMap((lv) => lv.classes) : r.classes;
             return (
               <div key={r.id} style={{ background: col.bg, borderLeft: `4px solid ${col.bar}` }}>
                 <div className="px-3 pt-2 flex items-baseline justify-between gap-2">
                   <div className="text-xs font-bold font-mono" style={{ color: col.fg }}>
                     {r.period === "AS" ? "After School" : `คาบ ${r.period}`} · {r.start}–{r.end}
                   </div>
-                  <div className="text-[11px]" style={{ color: col.fg, opacity: 0.8 }}>{r.classes.length} ห้อง</div>
+                  <div className="text-[11px]" style={{ color: col.fg, opacity: 0.8 }}>{shownClasses.length} ห้อง</div>
                 </div>
-                <div className="px-3 text-[11px]" style={{ color: col.fg }}>ห้องเรียน: {r.group || "-"}</div>
+                {shownLevels.length ? (
+                  <div className="px-3 pt-1 flex flex-wrap gap-1.5">
+                    {shownLevels.map((lv) => (
+                      <span key={lv.name} className="px-2 py-1 text-[11px]" style={{ background: C.white, color: col.fg, border: `1px solid ${col.bar}` }}>
+                        <b>{lv.name}</b> · {lv.classes.join(", ")}{lv.room ? ` · ${lv.room}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 text-[11px]" style={{ color: col.fg }}>ห้องเรียน: {r.group || "-"}</div>
+                )}
                 <div className="px-3 pb-2 pt-1.5 flex flex-wrap gap-1.5">
                   {(r.sports || []).length === 0 ? (
                     <span className="text-[11px]" style={{ color: col.fg, opacity: 0.7 }}>ยังไม่พบครู/กีฬาที่ตรงกับคาบนี้ในแท็บรายคน</span>

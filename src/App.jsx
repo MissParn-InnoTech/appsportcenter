@@ -329,7 +329,8 @@ function buildCombinedSport(data) {
   const sportTeachers = teachers.filter((t) => t.id !== combinedTab.id && !/รวม/.test(t.sheetName || "") && !NOT_SPORT_DEPT.test(t.dept || ""));
   const byTeacher = new Map(sportTeachers.map((t) => [t.id, t]));
   const others = data.slots.filter((s) => byTeacher.has(s.teacherId));
-  return data.slots
+  const matched = new Set(); // คาบของครูที่จับคู่กับตารางรวมกีฬาได้แล้ว
+  const base = data.slots
     .filter((s) => s.teacherId === combinedTab.id && s.start && s.end && s.day)
     .map((s) => {
       const cls = new Set(s.classes || []);
@@ -341,6 +342,7 @@ function buildCombinedSport(data) {
         if (cls.size && !overlap.length) return; // ต้องมีห้องเรียนตรงกันอย่างน้อย 1 ห้อง
         const t = byTeacher.get(o.teacherId);
         const key = t.id;
+        matched.add(o.id);
         if (seen.has(key)) return;
         seen.add(key);
         sports.push({ name: sportNameOf(t), teacher: t.name, room: o.room || "", classes: overlap.length ? overlap : (o.classes || []), subject: o.subject || "" });
@@ -351,6 +353,25 @@ function buildCombinedSport(data) {
         sports: sports.sort((a, b) => a.name.localeCompare(b.name, "th")),
       };
     });
+  // คาบของ "ครูประจำระดับ" (ป.1–ม.6) ที่ไม่อยู่ในแท็บรวมกีฬา เช่น ม.4–ม.6 — เติมเข้าตารางรวมด้วย
+  // เพื่อให้เห็นตารางสอนของครูประจำระดับครบทุกระดับ (รวมคาบวัน/คาบเดียวกันไว้แถวเดียว)
+  const extra = new Map();
+  others.forEach((o) => {
+    const t = byTeacher.get(o.teacherId);
+    if (!/ครูประจำระดับ/.test(`${t.name} ${t.sheetName || ""}`)) return;
+    if (matched.has(o.id) || o.type !== "teaching" || !o.start || !o.end || !o.day) return;
+    const k = `${o.dayIndex}|${o.period}`;
+    if (!extra.has(k)) extra.set(k, { id: `CS-X-${o.dayIndex}-${o.period}`, day: o.day, dayIndex: o.dayIndex, period: o.period, start: o.start, end: o.end, classes: [], sports: [] });
+    const row = extra.get(k);
+    (o.classes || []).forEach((c) => { if (!row.classes.includes(c)) row.classes.push(c); });
+    if (!row.sports.some((x) => x.teacher === t.name)) row.sports.push({ name: sportNameOf(t), teacher: t.name, room: o.room || "", classes: o.classes || [], subject: o.subject || "" });
+  });
+  const extraRows = [...extra.values()].map((r) => ({
+    ...r,
+    group: r.classes.join(", ") || [...new Set(r.sports.map((x) => x.subject).filter(Boolean))].join(", "),
+    sports: r.sports.sort((a, b) => a.name.localeCompare(b.name, "th")),
+  }));
+  return [...base, ...extraRows].sort((a, b) => a.dayIndex - b.dayIndex || String(a.start).localeCompare(String(b.start)));
 }
 
 // รวมตารางจาก 2 แหล่ง — ถ้าครู/วัน/เวลาเดียวกันมีอยู่แล้ว ให้ใช้แถวเดิม (อาจแก้ไขได้)

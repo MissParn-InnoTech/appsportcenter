@@ -894,7 +894,7 @@ const StatCard = ({ icon: Icon, label, value, color, tone, sub, onClick }) => {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate" style={{ fontSize: 12, color: C.slate }} title={label}>{label}</div>
+          <div className="line-clamp-2" style={{ fontSize: 12, lineHeight: 1.35, color: C.slate }} title={label}>{label}</div>
           <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2, color: C.ink, fontVariantNumeric: "tabular-nums" }}>{value}</div>
           {sub && <div className="truncate mt-0.5" style={{ fontSize: 11.5, color: C.mute }} title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
         </div>
@@ -1619,7 +1619,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
   return (
     <>
       <header className="mobile-only flex items-center justify-between px-3 py-3 shrink-0" style={{ background: C.white, borderBottom: `1px solid ${C.line}`, paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}>
-        <button onClick={() => setDrawer(true)} className="w-9 h-9 flex items-center justify-center shrink-0" aria-label="เมนู">
+        <button onClick={() => setDrawer(true)} className="w-11 h-11 -ml-1 flex items-center justify-center shrink-0" aria-label="เมนู">
           <div className="flex flex-col gap-1">
             <span className="block w-5 h-0.5" style={{ background: C.ink }} />
             <span className="block w-5 h-0.5" style={{ background: C.ink }} />
@@ -1658,7 +1658,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
                     const externalUrl = EXTERNAL_NAV_LINKS[key];
                     return (
                       <button key={key} onClick={() => { if (externalUrl) { window.open(externalUrl, "_blank", "noopener,noreferrer"); } else { setTab(key); } setDrawer(false); }}
-                        className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
+                        className="w-full flex items-center gap-3 px-5 py-3 text-sm text-left transition-colors"
                         style={{
                           color: active ? C.onDark : "#AEB8D6",
                           background: active ? "rgba(255,255,255,0.08)" : "transparent",
@@ -1696,10 +1696,10 @@ function BottomNav({ nav, tab, setTab }) {
         const active = tab === key;
         return (
           <button key={key} onClick={() => setTab(key)}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2"
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 pt-2 pb-1.5" aria-current={active ? "page" : undefined}
             style={{ color: active ? C.crimson : C.mute }}>
-            <Icon size={18} strokeWidth={active ? 2.4 : 2} />
-            <span className="text-[10px] leading-tight truncate max-w-[64px]" style={{ fontWeight: active ? 600 : 400 }}>{label}</span>
+            <Icon size={21} strokeWidth={active ? 2.3 : 1.9} />
+            <span className="text-[10px] leading-tight truncate max-w-[72px]" style={{ fontWeight: active ? 600 : 400 }}>{label}</span>
           </button>
         );
       })}
@@ -1806,7 +1806,7 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
   return (
     <div>
       <SectionHead eyebrow={ROLE_META[user.role].dash} title="ภาพรวมทรัพยากรศูนย์กีฬา" sub="อัปเดตแบบเรียลไทม์จากทะเบียนครุภัณฑ์และรายการยืม–คืน" />
-      <div className="grid grid-cols-2 gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
+      <div className="grid grid-cols-2 gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
         <StatCard label="รายการทั้งหมด" value={k.total} tone="navy" icon={Package} />
         <StatCard label="ใช้งานได้ (ชิ้น)" value={k.normal.toLocaleString()} tone="ok" icon={CheckCircle2} />
         <StatCard label="ชำรุด (ชิ้น)" value={k.damaged.toLocaleString()} tone="crimson" icon={Wrench} />
@@ -3075,7 +3075,7 @@ function StaffDirectory({ staff, schedule = [], tasks = [], setStaffList, user, 
           {depts.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {filtered.map((s) => (
           <div key={s.id} role="button" tabIndex={0} onClick={() => setSelectedStaff(s)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedStaff(s); } }} className="w-full p-4 text-left cursor-pointer" style={{ background: C.white, border: `1px solid ${C.line}` }}>
             <div className="flex items-center justify-between mb-2">

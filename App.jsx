@@ -742,7 +742,7 @@ function GuideBar({ id }) {
   const N = NC();
   const panelId = `guide-${String(id).replace(/[^A-Za-z0-9]+/g, "-")}`;
   return (
-    <div className="no-print mb-5" data-no-i18n style={{ background: N.white, border: `1px solid ${N.line}`, borderLeft: `3px solid ${N.crimson}`, borderRadius: 10 }}>
+    <div className="no-print mb-5" data-no-i18n style={{ fontFamily: MFONT, background: N.white, border: `1px solid ${N.line}`, borderLeft: `3px solid ${N.crimson}`, borderRadius: 10 }}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={panelId}
         className="w-full flex items-center gap-2 text-left" style={{ padding: "10px 14px", color: N.ink, background: "transparent" }}>
         <BookOpen size={16} style={{ color: N.crimson, flexShrink: 0 }} />
@@ -775,20 +775,9 @@ function GuideBar({ id }) {
   );
 }
 
-function SectionHead({ eyebrow, title, sub, right }) {
-  return (
-    <>
-      <div className="flex items-end justify-between mb-5 pb-4" style={{ borderBottom: `2px solid ${C.navy}` }}>
-        <div>
-          <div className="text-xs font-semibold tracking-wide mb-1" style={{ color: C.crimson }}>{eyebrow}</div>
-          <h1 className="text-2xl font-bold" style={{ color: C.ink }}>{title}</h1>
-          {sub && <p className="text-sm mt-1" style={{ color: C.slate }}>{sub}</p>}
-        </div>
-        {right}
-      </div>
-      <GuideBar id={eyebrow} />
-    </>
-  );
+// หัวหน้าแบบเดียวกันทุกหน้า — ใช้ MHead ตัวเดียว (ป้ายหมวด · ชื่อหน้า · คำอธิบาย · ปุ่มด้านขวา · แถบคู่มือ)
+function SectionHead(props) {
+  return <MHead {...props} />;
 }
 
 const STAT_CARD_TONES = { get navy() { return C.navy; }, get ok() { return C.ok; }, get crimson() { return C.crimson; }, get gold() { return C.warn; } };
@@ -908,15 +897,15 @@ function MHead({ eyebrow, title, sub, right }) {
   const N = NC();
   return (
     <>
-    <div className="flex items-end justify-between gap-4 flex-wrap mb-5">
-      <div className="min-w-0" style={{ flex: "1 1 300px" }}>
-        {eyebrow && <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: N.crimson }}>{eyebrow}</div>}
-        <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: N.ink, marginTop: 2 }}>{title}</h1>
-        {sub && <p style={{ fontSize: 14, color: N.slate, marginTop: 4, maxWidth: "64ch" }}>{sub}</p>}
+      <div className="m-head flex items-end justify-between gap-4 flex-wrap mb-5">
+        <div className="min-w-0" style={{ flex: "1 1 300px" }}>
+          {eyebrow && <div style={{ fontFamily: MFONT, fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: N.crimson }}>{eyebrow}</div>}
+          <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: N.ink, marginTop: 2 }}>{title}</h1>
+          {sub && <p style={{ fontFamily: MFONT, fontSize: 14, lineHeight: 1.5, color: N.slate, marginTop: 4, maxWidth: "64ch" }}>{sub}</p>}
+        </div>
+        {right && <div className="m-head-actions flex items-center gap-2 flex-wrap shrink-0">{right}</div>}
       </div>
-      {right && <div className="flex items-center gap-2 flex-wrap shrink-0">{right}</div>}
-    </div>
-    <GuideBar id={eyebrow} />
+      <GuideBar id={eyebrow} />
     </>
   );
 }
@@ -1700,7 +1689,7 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
     const mine = borrows.filter((b) => b.borrower === user.name);
     return (
       <div>
-        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="นี่คือสิ่งที่คุณต้องทำวันนี้" />
+        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี ${user.name}`} sub="สรุปงานและรายการที่ต้องดำเนินการในวันนี้" />
         {todaysTasks.length > 0 && (
           <div className="mb-6 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
             <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><ClipboardList size={15} /> งานของวันนี้</h3>
@@ -1726,7 +1715,7 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
 
   return (
     <div>
-      <SectionHead eyebrow={ROLE_META[user.role].dash} title="ภาพรวมทรัพยากรศูนย์กีฬา" sub="อัปเดตแบบเรียลไทม์จากทะเบียนครุภัณฑ์และรายการยืม–คืน" />
+      <SectionHead eyebrow={ROLE_META[user.role].dash} title="ภาพรวมทรัพยากรศูนย์กีฬา" sub="ข้อมูลล่าสุดจากทะเบียนครุภัณฑ์และรายการยืม–คืน" />
       <div className="grid grid-cols-2 gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
         <StatCard label="รายการทั้งหมด" value={k.total} tone="navy" icon={Package} />
         <StatCard label="ใช้งานได้ (ชิ้น)" value={k.normal.toLocaleString()} tone="ok" icon={CheckCircle2} />
@@ -1946,7 +1935,7 @@ function Inventory({ user, items, setItems, logAction }) {
 
   return (
     <div>
-      <SectionHead eyebrow="INVENTORY" title="ทะเบียนครุภัณฑ์" sub={`${filtered.length} รายการ จากทั้งหมด ${items.length} รายการ`}
+      <SectionHead eyebrow="INVENTORY" title="ทะเบียนครุภัณฑ์" sub={`แสดง ${filtered.length} จาก ${items.length} รายการ`}
         right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มครุภัณฑ์ใหม่</Btn> : !editable && <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
 
       <div className="flex items-center gap-3 mb-4">
@@ -2679,7 +2668,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
     return (
       <MPage innerRef={topRef}>
         <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, { label: zone.name }]} />
-        <MHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์ ตารางใช้ห้อง และงานซ่อมบำรุง`}
+        <MHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์ ตารางการใช้ห้อง และงานซ่อมบำรุง`}
           right={<MBtn variant="ghost" onClick={goAll}>← สถานที่ทั้งหมด</MBtn>} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           <FacStat label="ห้อง/สนาม" value={zone.rooms.length} sub={`ใช้งานอยู่ ${zone.inUse} ห้อง`} color={zone.inUse ? C.crimson : C.ink} />
@@ -2705,7 +2694,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
 
   return (
     <MPage innerRef={topRef}>
-      <MHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกสถานที่ → เลือกห้อง → ดูครุภัณฑ์ ตารางใช้ห้อง งานซ่อมบำรุง และประวัติยืม–คืน" />
+      <MHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกกลุ่มสถานที่และห้อง เพื่อดูครุภัณฑ์ ตารางการใช้ห้อง งานซ่อมบำรุง และประวัติการยืม–คืน" />
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-5">
         <FacStat label="ห้อง/สนามทั้งหมด" value={allRooms.length} sub={`ใน ${zones.length} กลุ่มสถานที่`} />
         <FacStat label="กำลังใช้งานตอนนี้" value={totalInUse} color={totalInUse ? C.crimson : C.ink} sub={`${nowDay} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} น.`} />
@@ -2983,7 +2972,7 @@ function StaffDirectory({ staff, schedule = [], tasks = [], setStaffList, user, 
   return (
     <div>
       <SectionHead eyebrow="STAFF DIRECTORY" title="ทำเนียบบุคลากรศูนย์กีฬา"
-        sub={`${filtered.length} คน จากทั้งหมด ${staff.length} คน — แสดงเฉพาะชื่อ/หน่วยงาน/หน้าที่/เบอร์ติดต่องาน (ไม่มีข้อมูลอ่อนไหว)`}
+        sub={`แสดง ${filtered.length} จาก ${staff.length} คน · เฉพาะชื่อ หน่วยงาน หน้าที่ และเบอร์ติดต่องาน`}
         right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มบุคลากร</Btn> : <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
@@ -3177,7 +3166,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   return (
     <div>
       <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางรวมกีฬา"}
-        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบ — จากชีต "ตารางรวมกีฬา" พร้อมกีฬาที่สอนในแต่ละคาบ`}
+        sub={mine ? `${rows.length} คาบต่อสัปดาห์ · แสดงเฉพาะตารางสอนของคุณ` : `${rows.length} คาบ · ข้อมูลจากตารางรวมกีฬา พร้อมชนิดกีฬาที่สอนในแต่ละคาบ`}
         right={
           <div className="flex items-center gap-2">
             {manager && (
@@ -3557,7 +3546,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
 
   return (
     <div>
-      <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="ขั้นตอน: บันทึกการยืม → ใช้งาน → บันทึกการคืน"
+      <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="บันทึกการยืม ติดตามกำหนดคืน และบันทึกการคืนอุปกรณ์"
         right={<Btn onClick={() => setShowNew(true)} icon={Plus}>บันทึกการยืมใหม่</Btn>} />
 
       <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
@@ -3703,7 +3692,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
 
   return (
     <div>
-      <SectionHead eyebrow="DAMAGE & MAINTENANCE" title="แจ้งชำรุด–ซ่อมบำรุง" sub="Report → Review → Severity → Maintenance → Resolved"
+      <SectionHead eyebrow="DAMAGE & MAINTENANCE" title="แจ้งชำรุดและติดตามการซ่อม" sub="แจ้งอุปกรณ์ชำรุด ประเมินระดับความรุนแรง และติดตามจนซ่อมแล้วเสร็จ"
         right={<Btn onClick={() => setShowNew(true)} icon={Plus}>แจ้งของชำรุด</Btn>} />
 
       {damages.length === 0 ? (
@@ -3946,7 +3935,7 @@ function SubstituteEngine({ user, schedule = [], staffList = [], logAction }) {
   return (
     <div>
       <SectionHead eyebrow="SUBSTITUTE ENGINE" title="ระบบจัดการสอนแทน"
-        sub="ค้นหาครูสอนแทนอัตโนมัติ · มอบหมายและติดตามภาระการสอนแทนทั้งเดือน"
+        sub="ค้นหาครูสอนแทนที่เหมาะสม มอบหมาย และติดตามภาระการสอนแทนรายเดือน"
         right={<Btn variant="ghost" icon={FileText} onClick={() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>ดูรายงาน</Btn>} />
 
       <div className="grid grid-cols-2 gap-4 mb-5">
@@ -4217,7 +4206,7 @@ function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffL
 
   return (
     <div>
-      <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ข้อมูลศูนย์กีฬา" sub="สรุปจากทุกชีต: ครุภัณฑ์ · บุคลากร · ตารางสอน · งาน · ยืม-คืน · ซ่อม · งบประมาณ" />
+      <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ข้อมูลศูนย์กีฬา" sub="สรุปข้อมูลครุภัณฑ์ บุคลากร ตารางสอน งาน การยืม–คืน การซ่อมบำรุง และงบประมาณ" />
 
       {(() => {
         const bu = budgetRows.reduce((s, b) => s + b.used, 0), ba = budgetRows.reduce((s, b) => s + b.amount, 0);
@@ -4610,7 +4599,7 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         .report-band, .report-band * { background: transparent !important; color: #17171B !important; }
       }`}</style>
       <div className="no-print">
-        <MHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูลสด ณ ${nowStr} · เลือกรายงาน แล้วส่งออก CSV หรือพิมพ์เป็น PDF ได้`}
+        <MHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูล ณ ${nowStr} · เลือกประเภทรายงานเพื่อส่งออกเป็น CSV หรือพิมพ์เป็น PDF`}
           right={<>
             <MBtn variant="ghost" icon={Download} onClick={exportCsv} disabled={!report.rows.length}>ส่งออก CSV</MBtn>
             <MBtn icon={FileText} onClick={printPage}>พิมพ์ / PDF</MBtn>
@@ -4817,7 +4806,7 @@ function ManagementActions({ user, items = [], setItems, borrows = [], damages =
   return (
     <div>
       <SectionHead eyebrow="MANAGEMENT ACTION" title="สั่งการบริหารทรัพยากร"
-        sub="DATA → INSIGHT → DECISION → ACTION · สแกนศูนย์กีฬาแบบครบทุกด้าน" />
+        sub="ประเด็นที่ต้องตัดสินใจ จากการตรวจข้อมูลทุกด้านของศูนย์กีฬา" />
 
       {/* KPI ต้องสั่งการ */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
@@ -5031,7 +5020,7 @@ function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, p
   return (
     <div>
       <SectionHead eyebrow="WORK MANAGEMENT" title={personal ? "งานของฉัน" : readOnly ? "ภาพรวมงานทั้งหมด" : "จัดการงาน"}
-        sub={`${rows.length} งาน${personal ? " ที่มอบหมายให้คุณหรือคุณสร้างไว้" : "ในระบบ"}`}
+        sub={`${rows.length} งาน${personal ? "ที่ได้รับมอบหมายหรือสร้างโดยคุณ" : "ในระบบ"}`}
         right={<div className="flex items-center gap-2"><Btn variant="ghost" onClick={() => setTab("profile")} icon={User}>กลับโปรไฟล์ของฉัน</Btn>{manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>สร้างงานใหม่</Btn>}</div>} />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -5317,7 +5306,7 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
 
   return (
     <MPage>
-      <MHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว (ตารางสอนดูที่เมนูตารางสอน)"
+      <MHead eyebrow="CALENDAR" title="ปฏิทินกลาง" sub="รวมงานของคุณ กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว · ตารางสอนดูได้ที่เมนูตารางสอน"
         right={manager && <MBtn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มกิจกรรมองค์กร</MBtn>} />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap" role="group" aria-label="ชั้นข้อมูลปฏิทิน">
@@ -5486,7 +5475,7 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
 
   return (
     <div>
-      <SectionHead eyebrow="MAINTENANCE" title="ซ่อมบำรุง" sub={`ประวัติซ่อม ${repairs.length} ครั้ง · รวม ${totalCost.toLocaleString()} บาท`}
+      <SectionHead eyebrow="MAINTENANCE" title="ซ่อมบำรุง" sub={`ประวัติการซ่อม ${repairs.length} ครั้ง · ค่าใช้จ่ายรวม ${totalCost.toLocaleString()} บาท`}
         right={manager && (
           <div className="flex gap-2">
             <Btn variant="ghost" onClick={() => setShowPM(true)} icon={CalendarClock}>ตั้งนัดซ่อมล่วงหน้า</Btn>
@@ -5795,7 +5784,7 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
 
   return (
     <MPage>
-      <MHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ ขั้นตอนการทำงานของศูนย์กีฬา"
+      <MHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ และขั้นตอนการปฏิบัติงานของศูนย์กีฬา"
         right={manager && <MBtn onClick={() => setShowNew(true)} icon={Upload}>อัปโหลดเอกสาร</MBtn>} />
 
       <div className="mb-5" style={mCard(C, { padding: 14 })}>
@@ -6045,7 +6034,7 @@ function BudgetView({ user, staffList, logAction }) {
   return (
     <div>
       <SectionHead eyebrow="BUDGET" title={data.isManager ? "ภาพรวมงบประมาณศูนย์กีฬา" : "งบประมาณของฉัน"}
-        sub={data.isManager ? "เห็นทุกโครงการ — เฉพาะ L3/L4 เท่านั้นที่เข้าถึงมุมมองนี้ได้ ข้อมูลกรองจากฝั่งเซิร์ฟเวอร์" : `เห็นเฉพาะโครงการที่คุณรับผิดชอบ (${data.budgets.length} โครงการ)`}
+        sub={data.isManager ? "แสดงทุกโครงการของศูนย์กีฬา · มุมมองนี้สำหรับระดับ L3 และ L4 เท่านั้น" : `แสดงเฉพาะโครงการที่คุณรับผิดชอบ ${data.budgets.length} โครงการ`}
         right={manager && (
           <div className="flex gap-2">
             <Btn variant="ghost" onClick={() => setShowIncome(true)} icon={Plus}>บันทึกรายรับ</Btn>
@@ -6330,6 +6319,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   return (
     <MPage>
       {showPw && <ChangePasswordModal user={user} onClose={() => setShowPw(false)} />}
+      <MHead eyebrow="PROFILE" title="โปรไฟล์ของฉัน" sub="ข้อมูลส่วนตัว งานประจำสัปดาห์ และแฟ้มผลงานของคุณ" />
 
       <section className="flex flex-wrap items-center justify-between gap-6 mb-5" style={{ background: C.navyDeep, color: "#FFFFFF", borderRadius: 18, padding: "clamp(20px, 3vw, 32px)" }}>
         <div className="flex flex-wrap items-center gap-5 min-w-0">
@@ -6344,8 +6334,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
           </div>
           <div className="min-w-0">
-            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: "#F3A3B1" }}>PROFILE</div>
-            <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: "#FFFFFF", marginTop: 2, overflowWrap: "anywhere" }}>{user.name}</h1>
+            <h2 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 24, lineHeight: 1.2, color: "#FFFFFF", overflowWrap: "anywhere" }}>{user.name}</h2>
             <div className="flex flex-wrap items-center gap-2 mt-1.5">
               <span style={{ fontSize: 14, color: "#D2D2DA" }}>{user.title || "-"}</span>
               <span style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,255,255,0.14)", color: "#FFFFFF", fontSize: 12, fontWeight: 600 }}>{meta.label}</span>

@@ -99,7 +99,8 @@ function applyTheme(t) {
 }
 applyTheme(readTheme());
 
-const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,sans-serif";
+// แบบอักษรเดียวกันทุกหน้า — IBM Plex Sans Thai คือฟอนต์ที่ index.html โหลดไว้จริง
+const FONT = "'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,sans-serif";
 
 /* ============================================================
    GOOGLE SHEETS BACKEND
@@ -268,7 +269,22 @@ async function loadTeachingSchedule() {
       type: s.type,
       source: "teachingSheet",
     }));
-  return { rows, combined: buildCombinedSport(data), warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "" };
+  // ครูที่ได้รับมอบหมายให้สอนตามตารางแต่ละแท็บ (เก็บในแท็บ "มอบหมายครู" ของชีตตารางสอน)
+  const assign = {};
+  (data.teachers || []).forEach((t) => { if (Array.isArray(t.assignees) && t.assignees.length) assign[t.name] = t.assignees; });
+  return { rows, combined: buildCombinedSport(data), warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "", assign };
+}
+
+// บันทึกรายชื่อครูที่มอบหมายให้ตารางสอน 1 แท็บ (แทนที่รายชื่อเดิมของแท็บนั้นทั้งหมด)
+async function saveScheduleAssignees(scheduleName, teachers, by) {
+  if (!TEACHING_API_URL) throw new Error("ยังไม่ได้เชื่อมต่อชีตตารางสอน");
+  const res = await fetch(TEACHING_API_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "assignScheduleTeachers", payload: { scheduleName, teachers, by } }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "บันทึกไม่สำเร็จ");
+  return data.result.teachers;
 }
 
 // ชื่อกีฬาของครูแต่ละคน จากช่อง "งาน/กีฬา" ในหัวแท็บ เช่น "สำนักงานศูนย์กีฬา / เต้น" → "เต้น"
@@ -742,7 +758,7 @@ function GuideBar({ id }) {
   const N = NC();
   const panelId = `guide-${String(id).replace(/[^A-Za-z0-9]+/g, "-")}`;
   return (
-    <div className="no-print mb-5" data-no-i18n style={{ fontFamily: MFONT, background: N.white, border: `1px solid ${N.line}`, borderLeft: `3px solid ${N.crimson}`, borderRadius: 10 }}>
+    <div className="no-print mb-5" data-no-i18n style={{ background: N.white, border: `1px solid ${N.line}`, borderLeft: `3px solid ${N.crimson}`, borderRadius: 10 }}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={panelId}
         className="w-full flex items-center gap-2 text-left" style={{ padding: "10px 14px", color: N.ink, background: "transparent" }}>
         <BookOpen size={16} style={{ color: N.crimson, flexShrink: 0 }} />
@@ -775,9 +791,21 @@ function GuideBar({ id }) {
   );
 }
 
-// หัวหน้าแบบเดียวกันทุกหน้า — ใช้ MHead ตัวเดียว (ป้ายหมวด · ชื่อหน้า · คำอธิบาย · ปุ่มด้านขวา · แถบคู่มือ)
-function SectionHead(props) {
-  return <MHead {...props} />;
+// หัวข้อหน้าแบบเดียวกันทุกหน้า (MHead ด้านล่างเรียกตัวนี้เช่นกัน)
+function SectionHead({ eyebrow, title, sub, right }) {
+  return (
+    <>
+      <div className="flex items-end justify-between gap-4 flex-wrap mb-5 pb-4" style={{ borderBottom: `2px solid ${C.navy}` }}>
+        <div className="min-w-0">
+          {eyebrow && <div className="text-xs font-semibold tracking-wide mb-1" style={{ color: C.crimson }}>{eyebrow}</div>}
+          <h1 className="text-2xl font-bold" style={{ color: C.ink, lineHeight: 1.25 }}>{title}</h1>
+          {sub && <p className="text-sm mt-1" style={{ color: C.slate, maxWidth: "64ch" }}>{sub}</p>}
+        </div>
+        {right && <div className="flex items-center gap-2 flex-wrap">{right}</div>}
+      </div>
+      <GuideBar id={eyebrow} />
+    </>
+  );
 }
 
 const STAT_CARD_TONES = { get navy() { return C.navy; }, get ok() { return C.ok; }, get crimson() { return C.crimson; }, get gold() { return C.warn; } };
@@ -872,15 +900,15 @@ const inputStyle = { get border() { return `1px solid ${C.line}`; }, padding: "8
    คลังความรู้ / รายงาน : พื้นเทากลาง การ์ดขาวมุมโค้ง ตัวอักษรเข้ม
    สีแดง ACT ใช้เฉพาะปุ่มหลักและจุดเน้น (แถบเมนูซ้ายไม่เปลี่ยน)
    ============================================================ */
-const MFONT = "'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,sans-serif";
-const MDISPLAY = "'Anuphan','IBM Plex Sans Thai','Noto Sans Thai',sans-serif";
+const MFONT = FONT;
+const MDISPLAY = FONT;
+// สีตัวอักษร เส้น และพื้นหลังใช้ชุดเดียวกับ C ทุกหน้า — เหลือเฉพาะคีย์ที่ C ไม่มี
 const N_LIGHT = {
-  navy: "#17171B", navyDeep: "#17171B", navySoft: "#5B5B66", ink: "#17171B", slate: "#5B5B66", mute: "#6B6B76",
-  line: "#E6E6EA", lineStrong: "#D6D6DC", paper: "#F7F7F9", white: "#FFFFFF", bg: "#F4F4F6", soft: "#F0F0F3",
+  lineStrong: "#E8CFCE", bg: C_LIGHT.paper, soft: "#FBEDEC",
   tint: "#FCEEF1", tintInk: "#8E1229", inv: "#17171B", invText: "#FFFFFF",
 };
 const N_DARK = {
-  navyDeep: "#1F2228", lineStrong: "#3A3E48", paper: "#1C1E24", bg: "#0F1013", soft: "#23262D",
+  lineStrong: "#3A3E48", bg: C_DARK.paper, soft: "#23262D",
   tint: "#2E1419", tintInk: "#F2899A", inv: "#E8E9EC", invText: "#17191E",
 };
 // พาเลตต์กลางของหน้าแบบใหม่ — คีย์ชุดเดียวกับ C จึงใช้แทนกันได้ทั้งธีมสว่าง/มืด
@@ -893,22 +921,7 @@ function MPage({ children, innerRef, className = "" }) {
   return <div ref={innerRef} className={`m-page ${className}`} style={{ background: N.bg, color: N.ink, fontFamily: MFONT }}>{children}</div>;
 }
 
-function MHead({ eyebrow, title, sub, right }) {
-  const N = NC();
-  return (
-    <>
-      <div className="m-head flex items-end justify-between gap-4 flex-wrap mb-5">
-        <div className="min-w-0" style={{ flex: "1 1 300px" }}>
-          {eyebrow && <div style={{ fontFamily: MFONT, fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: N.crimson }}>{eyebrow}</div>}
-          <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: N.ink, marginTop: 2 }}>{title}</h1>
-          {sub && <p style={{ fontFamily: MFONT, fontSize: 14, lineHeight: 1.5, color: N.slate, marginTop: 4, maxWidth: "64ch" }}>{sub}</p>}
-        </div>
-        {right && <div className="m-head-actions flex items-center gap-2 flex-wrap shrink-0">{right}</div>}
-      </div>
-      <GuideBar id={eyebrow} />
-    </>
-  );
-}
+function MHead(props) { return <SectionHead {...props} />; }
 
 function MBtn({ children, onClick, variant = "primary", disabled, icon: Icon, small, title }) {
   const N = NC();
@@ -1156,6 +1169,8 @@ export default function App() {
   const [teachingRows, setTeachingRows] = useState(() => readScheduleCache().teaching || []);
   const [combinedSport, setCombinedSport] = useState(() => readScheduleCache().combined || []);
   const [scheduleLoaded, setScheduleLoaded] = useState(() => !!readScheduleCache().savedAt);
+  const [scheduleAssign, setScheduleAssign] = useState(() => readScheduleCache().assign || {});
+  const updateScheduleAssign = (name, list) => setScheduleAssign((m) => { const n = { ...m, [name]: list }; writeScheduleCache({ assign: n }); return n; });
   const allSchedule = useMemo(() => mergeSchedules(schedule, teachingRows), [schedule, teachingRows]);
 
   // persistence — Google Sheets backend when API_URL is set, else local shared storage
@@ -1163,9 +1178,10 @@ export default function App() {
     // ตารางสอนรายครู — เริ่มโหลดทันทีพร้อมข้อมูลหลัก (ไม่ต้องรอกัน)
     if (TEACHING_API_URL) {
       loadTeachingSchedule()
-        .then(({ rows, combined, warnings }) => {
+        .then(({ rows, combined, warnings, assign }) => {
           setTeachingRows(rows); setCombinedSport(combined); setScheduleWarnings(warnings); setScheduleLoaded(true);
-          writeScheduleCache({ teaching: rows, combined, warnings });
+          setScheduleAssign(assign || {});
+          writeScheduleCache({ teaching: rows, combined, warnings, assign: assign || {} });
         })
         .catch(() => {});
     }
@@ -1304,7 +1320,7 @@ export default function App() {
           {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} repairs={repairs} damages={damages} tasks={tasks} borrows={borrows} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} schedule={allSchedule} tasks={tasks} setStaffList={setStaffList} user={user} logAction={logAction} setTab={setTab} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} scheduleAssign={scheduleAssign} onScheduleAssign={updateScheduleAssign} />}
           {tab === "substitute" && <SubstituteEngine user={user} schedule={allSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
@@ -1312,7 +1328,7 @@ export default function App() {
           {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
           {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
-          {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
+          {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} scheduleAssign={scheduleAssign} onScheduleAssign={updateScheduleAssign} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
           {tab === "reports" && <Reports user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} />}
           {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} repairs={repairs} pmSchedule={pmSchedule} docs={docs} actionsLog={actionsLog} logAction={logAction} setTab={setTab} />}
         </main>
@@ -1689,7 +1705,7 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
     const mine = borrows.filter((b) => b.borrower === user.name);
     return (
       <div>
-        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี ${user.name}`} sub="สรุปงานและรายการที่ต้องดำเนินการในวันนี้" />
+        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="นี่คือสิ่งที่คุณต้องทำวันนี้" />
         {todaysTasks.length > 0 && (
           <div className="mb-6 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
             <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><ClipboardList size={15} /> งานของวันนี้</h3>
@@ -1715,7 +1731,7 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
 
   return (
     <div>
-      <SectionHead eyebrow={ROLE_META[user.role].dash} title="ภาพรวมทรัพยากรศูนย์กีฬา" sub="ข้อมูลล่าสุดจากทะเบียนครุภัณฑ์และรายการยืม–คืน" />
+      <SectionHead eyebrow={ROLE_META[user.role].dash} title="ภาพรวมทรัพยากรศูนย์กีฬา" sub="อัปเดตแบบเรียลไทม์จากทะเบียนครุภัณฑ์และรายการยืม–คืน" />
       <div className="grid grid-cols-2 gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
         <StatCard label="รายการทั้งหมด" value={k.total} tone="navy" icon={Package} />
         <StatCard label="ใช้งานได้ (ชิ้น)" value={k.normal.toLocaleString()} tone="ok" icon={CheckCircle2} />
@@ -1935,7 +1951,7 @@ function Inventory({ user, items, setItems, logAction }) {
 
   return (
     <div>
-      <SectionHead eyebrow="INVENTORY" title="ทะเบียนครุภัณฑ์" sub={`แสดง ${filtered.length} จาก ${items.length} รายการ`}
+      <SectionHead eyebrow="INVENTORY" title="ทะเบียนครุภัณฑ์" sub={`${filtered.length} รายการ จากทั้งหมด ${items.length} รายการ`}
         right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มครุภัณฑ์ใหม่</Btn> : !editable && <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
 
       <div className="flex items-center gap-3 mb-4">
@@ -2668,7 +2684,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
     return (
       <MPage innerRef={topRef}>
         <Crumbs parts={[{ label: "สถานที่ทั้งหมด", onClick: goAll }, { label: zone.name }]} />
-        <MHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์ ตารางการใช้ห้อง และงานซ่อมบำรุง`}
+        <MHead eyebrow="FACILITY" title={zone.name} sub={`${zone.rooms.length} ห้อง/สนาม · เลือกห้องเพื่อดูครุภัณฑ์ ตารางใช้ห้อง และงานซ่อมบำรุง`}
           right={<MBtn variant="ghost" onClick={goAll}>← สถานที่ทั้งหมด</MBtn>} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           <FacStat label="ห้อง/สนาม" value={zone.rooms.length} sub={`ใช้งานอยู่ ${zone.inUse} ห้อง`} color={zone.inUse ? C.crimson : C.ink} />
@@ -2694,7 +2710,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
 
   return (
     <MPage innerRef={topRef}>
-      <MHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกกลุ่มสถานที่และห้อง เพื่อดูครุภัณฑ์ ตารางการใช้ห้อง งานซ่อมบำรุง และประวัติการยืม–คืน" />
+      <MHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="เลือกสถานที่ → เลือกห้อง → ดูครุภัณฑ์ ตารางใช้ห้อง งานซ่อมบำรุง และประวัติยืม–คืน" />
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-5">
         <FacStat label="ห้อง/สนามทั้งหมด" value={allRooms.length} sub={`ใน ${zones.length} กลุ่มสถานที่`} />
         <FacStat label="กำลังใช้งานตอนนี้" value={totalInUse} color={totalInUse ? C.crimson : C.ink} sub={`${nowDay} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} น.`} />
@@ -2972,7 +2988,7 @@ function StaffDirectory({ staff, schedule = [], tasks = [], setStaffList, user, 
   return (
     <div>
       <SectionHead eyebrow="STAFF DIRECTORY" title="ทำเนียบบุคลากรศูนย์กีฬา"
-        sub={`แสดง ${filtered.length} จาก ${staff.length} คน · เฉพาะชื่อ หน่วยงาน หน้าที่ และเบอร์ติดต่องาน`}
+        sub={`${filtered.length} คน จากทั้งหมด ${staff.length} คน — แสดงเฉพาะชื่อ/หน่วยงาน/หน้าที่/เบอร์ติดต่องาน (ไม่มีข้อมูลอ่อนไหว)`}
         right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มบุคลากร</Btn> : <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
@@ -3077,7 +3093,8 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true, combinedSport = [] }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true, combinedSport = [], scheduleAssign = {}, onScheduleAssign }) {
+  const [openSchedule, setOpenSchedule] = useState(null);
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -3097,12 +3114,23 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   // หัวหน้าที่ไม่มีคาบสอนของตัวเอง — เปิดหน้าให้เจอ "ตารางรวมกีฬา" เลย
   const [managerViewMine, setManagerViewMine] = useState(() => !manager || myPeriodCount > 0);
   useEffect(() => { if (manager) setManagerViewMine(myPeriodCount > 0); }, [manager, myPeriodCount]);
-  const mine = hasOwnSchedule && (!manager || managerViewMine);
+  // L3 หัวหน้า — มุมมองที่ 3 "ตารางครูทุกคน": เลือกชื่อแล้วเห็นตารางสอนของคนนั้นทันที
+  const [viewAll, setViewAll] = useState(false);
+  const [pickTeacher, setPickTeacher] = useState("");
+  const all = manager && viewAll;
+  const mine = hasOwnSchedule && !all && (!manager || managerViewMine);
   // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
   // ดึงมาจากชีตตารางสอน (เช่น "ม.ชาญวิทย์ พึ่งอิ่ม") อาจสะกดคำนำหน้าไม่ตรงกับชื่อที่
   // login เข้ามา (เช่น "นายชาญวิทย์ พึ่งอิ่ม" จากชีตบุคลากร)
   const sportRows = useMemo(() => schedule.filter((s) => !isRoomScheduleRow(s)), [schedule]);
-  const rows = mine
+  const teacherNames = useMemo(
+    () => [...new Set(sportRows.map((s) => s.teacher).filter(Boolean))].sort((a, b) => a.localeCompare(b, "th")),
+    [sportRows]
+  );
+  const selTeacher = teacherNames.includes(pickTeacher) ? pickTeacher : (teacherNames[0] || "");
+  const rows = all
+    ? sportRows.filter((s) => s.teacher === selTeacher)
+    : mine
     ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name))
     : canSeeSport ? combinedSport : [];
 
@@ -3165,21 +3193,26 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
   return (
     <div>
-      <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางรวมกีฬา"}
-        sub={mine ? `${rows.length} คาบต่อสัปดาห์ · แสดงเฉพาะตารางสอนของคุณ` : `${rows.length} คาบ · ข้อมูลจากตารางรวมกีฬา พร้อมชนิดกีฬาที่สอนในแต่ละคาบ`}
+      <SectionHead eyebrow="SCHEDULE" title={all ? "ตารางครูทุกคน" : mine ? "ตารางสอนของฉัน" : "ตารางรวมกีฬา"}
+        sub={all ? `${teacherNames.length} ตาราง — เลือกชื่อเพื่อดูตารางสอนรายบุคคล` : mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบ — จากชีต "ตารางรวมกีฬา" พร้อมกีฬาที่สอนในแต่ละคาบ`}
         right={
           <div className="flex items-center gap-2">
             {manager && (
               <div className="flex items-center" style={{ border: `1px solid ${C.line}` }}>
-                <button onClick={() => setManagerViewMine(true)}
+                <button onClick={() => { setViewAll(false); setManagerViewMine(true); }}
                   className="px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  style={!viewAll && managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
                   ตารางของฉัน
                 </button>
-                <button onClick={() => setManagerViewMine(false)}
+                <button onClick={() => { setViewAll(false); setManagerViewMine(false); }}
                   className="px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={!managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  style={!viewAll && !managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
                   ตารางรวมกีฬา
+                </button>
+                <button onClick={() => setViewAll(true)}
+                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={viewAll ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  ตารางครูทุกคน
                 </button>
               </div>
             )}
@@ -3187,10 +3220,31 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
           </div>
         } />
 
+      {all && teacherNames.length > 0 && (
+        <div className="p-3 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="text-sm font-bold mb-2 flex items-center justify-between gap-2" style={{ color: C.navy }}>
+            <span>เลือกตารางสอน ({teacherNames.length})</span>
+            <span className="text-xs font-normal" style={{ color: C.slate }}>
+              {selTeacher} · {rows.length} คาบ/สัปดาห์{(scheduleAssign[selTeacher] || []).length ? ` · ครูผู้สอน: ${scheduleAssign[selTeacher].join(", ")}` : ""}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5" style={{ maxHeight: 132, overflowY: "auto" }}>
+            {teacherNames.map((n) => (
+              <button key={n} onClick={() => setPickTeacher(n)} className="px-2.5 py-1.5 text-xs font-semibold"
+                style={n === selTeacher ? { background: C.crimson, color: C.onDark } : { background: C.paper, color: C.ink, border: `1px solid ${C.line}` }}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
-          {!loaded ? "กำลังโหลดตารางสอน…" : !mine ? "ไม่พบข้อมูลในชีต \"ตารางรวมกีฬา\"" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
+          {!loaded ? "กำลังโหลดตารางสอน…" : all ? "ยังไม่มีตารางสอนรายบุคคลในระบบ" : !mine ? "ไม่พบข้อมูลในชีต \"ตารางรวมกีฬา\"" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
         </div>
+      ) : all ? (
+        <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : mine ? (
         <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : (
@@ -3242,13 +3296,32 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
           <div className="grid grid-cols-2 gap-3">
-            {workload.map((w) => (
-              <div key={w.teacher} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${C.line}` }}>
-                <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
-                <span className="text-xs shrink-0" style={{ color: C.slate }}>{w.periods} คาบ · {w.hours.toFixed(1)} ชม./สัปดาห์</span>
-              </div>
-            ))}
+            {workload.map((w) => {
+              const who = scheduleAssign[w.teacher] || [];
+              return (
+                <button key={w.teacher} onClick={() => setOpenSchedule(w.teacher)} className="text-left px-3 py-2" style={{ border: `1px solid ${C.line}` }} title="กดเพื่อดูตารางสอนและมอบหมายครู">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
+                    <span className="text-xs shrink-0" style={{ color: C.slate }}>{w.periods} คาบ · {w.hours.toFixed(1)} ชม./สัปดาห์</span>
+                  </div>
+                  <div className="text-[11px] truncate mt-0.5" style={{ color: who.length ? C.slate : C.mute }}>{who.length ? `ครูผู้สอน: ${who.join(", ")}` : "ยังไม่ได้มอบหมายครู"}</div>
+                </button>
+              );
+            })}
           </div>
+          {openSchedule && (
+            <ScheduleAssignModal
+              key={openSchedule}
+              name={openSchedule}
+              rows={sportRows.filter((r) => r.teacher === openSchedule)}
+              assignees={scheduleAssign[openSchedule] || []}
+              staffList={staffList}
+              canAssign={manager}
+              by={user.name || user.id || ""}
+              onSaved={(list) => onScheduleAssign && onScheduleAssign(openSchedule, list)}
+              onClose={() => setOpenSchedule(null)}
+            />
+          )}
         </div>
       )}
 
@@ -3546,7 +3619,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
 
   return (
     <div>
-      <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="บันทึกการยืม ติดตามกำหนดคืน และบันทึกการคืนอุปกรณ์"
+      <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="ขั้นตอน: บันทึกการยืม → ใช้งาน → บันทึกการคืน"
         right={<Btn onClick={() => setShowNew(true)} icon={Plus}>บันทึกการยืมใหม่</Btn>} />
 
       <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
@@ -3692,7 +3765,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
 
   return (
     <div>
-      <SectionHead eyebrow="DAMAGE & MAINTENANCE" title="แจ้งชำรุดและติดตามการซ่อม" sub="แจ้งอุปกรณ์ชำรุด ประเมินระดับความรุนแรง และติดตามจนซ่อมแล้วเสร็จ"
+      <SectionHead eyebrow="DAMAGE & MAINTENANCE" title="แจ้งชำรุด–ซ่อมบำรุง" sub="Report → Review → Severity → Maintenance → Resolved"
         right={<Btn onClick={() => setShowNew(true)} icon={Plus}>แจ้งของชำรุด</Btn>} />
 
       {damages.length === 0 ? (
@@ -3935,7 +4008,7 @@ function SubstituteEngine({ user, schedule = [], staffList = [], logAction }) {
   return (
     <div>
       <SectionHead eyebrow="SUBSTITUTE ENGINE" title="ระบบจัดการสอนแทน"
-        sub="ค้นหาครูสอนแทนที่เหมาะสม มอบหมาย และติดตามภาระการสอนแทนรายเดือน"
+        sub="ค้นหาครูสอนแทนอัตโนมัติ · มอบหมายและติดตามภาระการสอนแทนทั้งเดือน"
         right={<Btn variant="ghost" icon={FileText} onClick={() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>ดูรายงาน</Btn>} />
 
       <div className="grid grid-cols-2 gap-4 mb-5">
@@ -4105,7 +4178,89 @@ function SubstituteEngine({ user, schedule = [], staffList = [], logAction }) {
   );
 }
 
-function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], repairs = [], pmSchedule = [], docs = [], setTab }) {
+/* ดูตารางสอนของ 1 แท็บ + มอบหมายครูผู้สอน (เลือกได้หลายคน) — เปิดจากการ์ด "คาบสอนต่อสัปดาห์รายบุคคล" */
+const SCHEDULE_DAY_ORDER = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
+function ScheduleAssignModal({ name, rows, assignees, staffList, canAssign, by, onSaved, onClose }) {
+  const [picked, setPicked] = useState(assignees);
+  const [adding, setAdding] = useState(false);
+  const [q, setQ] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const dirty = picked.join("|") !== assignees.join("|");
+  const toggle = (n) => setPicked((p) => (p.includes(n) ? p.filter((x) => x !== n) : [...p, n]));
+  const byDay = SCHEDULE_DAY_ORDER.map((d) => [d, rows.filter((r) => r.day === d).sort((a, b) => String(a.start).localeCompare(String(b.start)))]).filter(([, l]) => l.length);
+  const choices = staffList.filter((s) => s.name && (!q.trim() || s.name.includes(q.trim()) || (s.dept || "").includes(q.trim())));
+  const save = async () => {
+    setSaving(true); setErr("");
+    try {
+      const saved = await saveScheduleAssignees(name, picked, by);
+      onSaved(saved); setAdding(false);
+    } catch (e) { setErr(e.message || "บันทึกไม่สำเร็จ"); }
+    setSaving(false);
+  };
+  return (
+    <Modal title={`ตารางสอน — ${name}`} onClose={onClose} wide>
+      <div className="mb-4 p-3" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold" style={{ color: C.slate }}>ครูผู้สอนที่มอบหมาย ({picked.length} คน)</span>
+          {canAssign && !adding && (
+            <button onClick={() => setAdding(true)} className="text-xs font-semibold px-2 py-1 flex items-center gap-1" style={{ background: C.navy, color: C.white }}>
+              <Plus size={12} /> เพิ่มครู
+            </button>
+          )}
+        </div>
+        {picked.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่ได้มอบหมายครู</div> : (
+          <div className="flex flex-wrap gap-1.5">
+            {picked.map((n) => (
+              <span key={n} className="text-xs px-2 py-1 flex items-center gap-1" style={{ background: C.white, border: `1px solid ${C.line}`, color: C.ink }}>
+                {n}
+                {canAssign && <button onClick={() => toggle(n)} aria-label={`เอา ${n} ออก`}><X size={12} style={{ color: C.slate }} /></button>}
+              </span>
+            ))}
+          </div>
+        )}
+        {adding && (
+          <div className="mt-3">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อครู / หน่วยงาน" className="w-full text-sm px-2 py-1.5 mb-2" style={{ border: `1px solid ${C.line}`, background: C.white, color: C.ink }} />
+            <div className="overflow-y-auto" style={{ maxHeight: 180, border: `1px solid ${C.line}`, background: C.white }}>
+              {choices.length === 0 ? <div className="text-sm p-2" style={{ color: C.mute }}>ไม่พบรายชื่อ</div> : choices.map((s) => (
+                <label key={s.id || s.name} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer" style={{ borderBottom: `1px solid ${C.line}`, color: C.ink }}>
+                  <input type="checkbox" checked={picked.includes(s.name)} onChange={() => toggle(s.name)} />
+                  <span className="flex-1 truncate">{s.name}</span>
+                  <span className="text-[11px] shrink-0" style={{ color: C.mute }}>{s.dept || ""}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {err && <div className="text-xs mt-2" style={{ color: C.crimson }}>{err}</div>}
+        {canAssign && dirty && (
+          <div className="flex gap-2 mt-3">
+            <button onClick={save} disabled={saving} className="flex-1 text-sm font-semibold py-2" style={{ background: C.crimson, color: "#fff", opacity: saving ? 0.6 : 1 }}>{saving ? "กำลังบันทึก..." : "บันทึกการมอบหมาย"}</button>
+            <button onClick={() => { setPicked(assignees); setAdding(false); setErr(""); }} disabled={saving} className="text-sm px-3 py-2" style={{ border: `1px solid ${C.line}`, color: C.slate }}>ยกเลิก</button>
+          </div>
+        )}
+      </div>
+      {byDay.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ไม่มีคาบสอนในตารางนี้</div> : byDay.map(([day, list]) => (
+        <div key={day} className="mb-3">
+          <div className="text-xs font-bold mb-1" style={{ color: C.navy }}>{day} <span className="font-normal" style={{ color: C.mute }}>· {list.length} คาบ</span></div>
+          {list.map((r) => (
+            <div key={r.id} className="flex gap-2 text-xs py-1.5" style={{ borderTop: `1px solid ${C.line}` }}>
+              <span className="font-mono shrink-0" style={{ color: C.slate, width: 84 }}>{r.start}–{r.end}</span>
+              <span className="flex-1" style={{ color: C.ink }}>
+                {r.subject}{r.group ? ` · ${r.group}` : ""}
+                {r.loc ? <span style={{ color: C.mute }}> · {r.loc}</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </Modal>
+  );
+}
+
+function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], scheduleAssign = {}, onScheduleAssign, repairs = [], pmSchedule = [], docs = [], setTab }) {
+  const [openSchedule, setOpenSchedule] = useState(null);
   const [budget, setBudget] = useState({ budgets: [], expenses: [], income: [], loaded: false });
   useEffect(() => {
     if (!API_URL || !user) return;
@@ -4206,7 +4361,7 @@ function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffL
 
   return (
     <div>
-      <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ข้อมูลศูนย์กีฬา" sub="สรุปข้อมูลครุภัณฑ์ บุคลากร ตารางสอน งาน การยืม–คืน การซ่อมบำรุง และงบประมาณ" />
+      <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ข้อมูลศูนย์กีฬา" sub="สรุปจากทุกชีต: ครุภัณฑ์ · บุคลากร · ตารางสอน · งาน · ยืม-คืน · ซ่อม · งบประมาณ" />
 
       {(() => {
         const bu = budgetRows.reduce((s, b) => s + b.used, 0), ba = budgetRows.reduce((s, b) => s + b.amount, 0);
@@ -4294,8 +4449,29 @@ function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffL
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <AnaCard title="คาบสอนต่อสัปดาห์รายบุคคล" right={<span className="text-[11px]" style={{ color: C.mute }}>จากตารางสอน</span>}>
           {A.workload.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่มีข้อมูลตารางสอน</div> :
-            A.workload.slice(0, 12).map((w) => <MiniBar key={w.name} label={w.name} value={w.n} max={maxWork} color={w.n >= 30 ? C.crimson : C.navy} suffix=" คาบ" />)}
-          {A.workload.length > 0 && <div className="text-[11px] mt-2" style={{ color: C.mute }}>สีแดง = ≥ 30 คาบ/สัปดาห์ ควรพิจารณากระจายภาระงาน</div>}
+            A.workload.slice(0, 12).map((w) => {
+              const who = scheduleAssign[w.name] || [];
+              return (
+                <button key={w.name} onClick={() => setOpenSchedule(w.name)} className="block w-full text-left" title="กดเพื่อดูตารางสอนและมอบหมายครู">
+                  <MiniBar label={w.name} value={w.n} max={maxWork} color={w.n >= 30 ? C.crimson : C.navy} suffix=" คาบ" />
+                  <div className="text-[11px] -mt-1 mb-2 truncate" style={{ color: who.length ? C.slate : C.mute }}>{who.length ? `ครูผู้สอน: ${who.join(", ")}` : "ยังไม่ได้มอบหมายครู"}</div>
+                </button>
+              );
+            })}
+          {A.workload.length > 0 && <div className="text-[11px] mt-2" style={{ color: C.mute }}>กดที่ชื่อเพื่อดูตารางสอนและมอบหมายครู · สีแดง = ≥ 30 คาบ/สัปดาห์ ควรพิจารณากระจายภาระงาน</div>}
+          {openSchedule && (
+            <ScheduleAssignModal
+              key={openSchedule}
+              name={openSchedule}
+              rows={schedule.filter((r) => (r.teacher || "-") === openSchedule && !isRoomScheduleRow(r))}
+              assignees={scheduleAssign[openSchedule] || []}
+              staffList={staffList}
+              canAssign={canManage(user.role)}
+              by={user.name || user.id || ""}
+              onSaved={(list) => onScheduleAssign && onScheduleAssign(openSchedule, list)}
+              onClose={() => setOpenSchedule(null)}
+            />
+          )}
         </AnaCard>
         <AnaCard title="กีฬาที่สอน (คาบ/สัปดาห์)" right={<span className="text-[11px]" style={{ color: C.mute }}>จากตารางรวมกีฬา</span>}>
           {sportList.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่มีข้อมูล</div> :
@@ -4599,7 +4775,7 @@ function Reports({ user, items = [], borrows = [], damages = [], tasks = [], sta
         .report-band, .report-band * { background: transparent !important; color: #17171B !important; }
       }`}</style>
       <div className="no-print">
-        <MHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูล ณ ${nowStr} · เลือกประเภทรายงานเพื่อส่งออกเป็น CSV หรือพิมพ์เป็น PDF`}
+        <MHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูลสด ณ ${nowStr} · เลือกรายงาน แล้วส่งออก CSV หรือพิมพ์เป็น PDF ได้`}
           right={<>
             <MBtn variant="ghost" icon={Download} onClick={exportCsv} disabled={!report.rows.length}>ส่งออก CSV</MBtn>
             <MBtn icon={FileText} onClick={printPage}>พิมพ์ / PDF</MBtn>
@@ -4806,7 +4982,7 @@ function ManagementActions({ user, items = [], setItems, borrows = [], damages =
   return (
     <div>
       <SectionHead eyebrow="MANAGEMENT ACTION" title="สั่งการบริหารทรัพยากร"
-        sub="ประเด็นที่ต้องตัดสินใจ จากการตรวจข้อมูลทุกด้านของศูนย์กีฬา" />
+        sub="DATA → INSIGHT → DECISION → ACTION · สแกนศูนย์กีฬาแบบครบทุกด้าน" />
 
       {/* KPI ต้องสั่งการ */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
@@ -5020,7 +5196,7 @@ function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, p
   return (
     <div>
       <SectionHead eyebrow="WORK MANAGEMENT" title={personal ? "งานของฉัน" : readOnly ? "ภาพรวมงานทั้งหมด" : "จัดการงาน"}
-        sub={`${rows.length} งาน${personal ? "ที่ได้รับมอบหมายหรือสร้างโดยคุณ" : "ในระบบ"}`}
+        sub={`${rows.length} งาน${personal ? " ที่มอบหมายให้คุณหรือคุณสร้างไว้" : "ในระบบ"}`}
         right={<div className="flex items-center gap-2"><Btn variant="ghost" onClick={() => setTab("profile")} icon={User}>กลับโปรไฟล์ของฉัน</Btn>{manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>สร้างงานใหม่</Btn>}</div>} />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -5306,7 +5482,7 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
 
   return (
     <MPage>
-      <MHead eyebrow="CALENDAR" title="ปฏิทินกลาง" sub="รวมงานของคุณ กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว · ตารางสอนดูได้ที่เมนูตารางสอน"
+      <MHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว (ตารางสอนดูที่เมนูตารางสอน)"
         right={manager && <MBtn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มกิจกรรมองค์กร</MBtn>} />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap" role="group" aria-label="ชั้นข้อมูลปฏิทิน">
@@ -5475,7 +5651,7 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
 
   return (
     <div>
-      <SectionHead eyebrow="MAINTENANCE" title="ซ่อมบำรุง" sub={`ประวัติการซ่อม ${repairs.length} ครั้ง · ค่าใช้จ่ายรวม ${totalCost.toLocaleString()} บาท`}
+      <SectionHead eyebrow="MAINTENANCE" title="ซ่อมบำรุง" sub={`ประวัติซ่อม ${repairs.length} ครั้ง · รวม ${totalCost.toLocaleString()} บาท`}
         right={manager && (
           <div className="flex gap-2">
             <Btn variant="ghost" onClick={() => setShowPM(true)} icon={CalendarClock}>ตั้งนัดซ่อมล่วงหน้า</Btn>
@@ -5784,7 +5960,7 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
 
   return (
     <MPage>
-      <MHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ และขั้นตอนการปฏิบัติงานของศูนย์กีฬา"
+      <MHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ ขั้นตอนการทำงานของศูนย์กีฬา"
         right={manager && <MBtn onClick={() => setShowNew(true)} icon={Upload}>อัปโหลดเอกสาร</MBtn>} />
 
       <div className="mb-5" style={mCard(C, { padding: 14 })}>
@@ -6034,7 +6210,7 @@ function BudgetView({ user, staffList, logAction }) {
   return (
     <div>
       <SectionHead eyebrow="BUDGET" title={data.isManager ? "ภาพรวมงบประมาณศูนย์กีฬา" : "งบประมาณของฉัน"}
-        sub={data.isManager ? "แสดงทุกโครงการของศูนย์กีฬา · มุมมองนี้สำหรับระดับ L3 และ L4 เท่านั้น" : `แสดงเฉพาะโครงการที่คุณรับผิดชอบ ${data.budgets.length} โครงการ`}
+        sub={data.isManager ? "เห็นทุกโครงการ — เฉพาะ L3/L4 เท่านั้นที่เข้าถึงมุมมองนี้ได้ ข้อมูลกรองจากฝั่งเซิร์ฟเวอร์" : `เห็นเฉพาะโครงการที่คุณรับผิดชอบ (${data.budgets.length} โครงการ)`}
         right={manager && (
           <div className="flex gap-2">
             <Btn variant="ghost" onClick={() => setShowIncome(true)} icon={Plus}>บันทึกรายรับ</Btn>
@@ -6319,7 +6495,6 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   return (
     <MPage>
       {showPw && <ChangePasswordModal user={user} onClose={() => setShowPw(false)} />}
-      <MHead eyebrow="PROFILE" title="โปรไฟล์ของฉัน" sub="ข้อมูลส่วนตัว งานประจำสัปดาห์ และแฟ้มผลงานของคุณ" />
 
       <section className="flex flex-wrap items-center justify-between gap-6 mb-5" style={{ background: C.navyDeep, color: "#FFFFFF", borderRadius: 18, padding: "clamp(20px, 3vw, 32px)" }}>
         <div className="flex flex-wrap items-center gap-5 min-w-0">
@@ -6334,7 +6509,8 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
           </div>
           <div className="min-w-0">
-            <h2 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 24, lineHeight: 1.2, color: "#FFFFFF", overflowWrap: "anywhere" }}>{user.name}</h2>
+            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: "#F3A3B1" }}>PROFILE</div>
+            <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: "#FFFFFF", marginTop: 2, overflowWrap: "anywhere" }}>{user.name}</h1>
             <div className="flex flex-wrap items-center gap-2 mt-1.5">
               <span style={{ fontSize: 14, color: "#D2D2DA" }}>{user.title || "-"}</span>
               <span style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,255,255,0.14)", color: "#FFFFFF", fontSize: 12, fontWeight: 600 }}>{meta.label}</span>
@@ -6347,12 +6523,12 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
           <ThemeToggle />
           <LangToggle />
           {API_URL && (
-            <button onClick={() => setShowPw(true)} className="inline-flex items-center gap-1.5 whitespace-nowrap" style={{ ...onHero, minHeight: 44, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 500 }}>
-              <KeyRound size={16} /> เปลี่ยนรหัสผ่าน
+            <button onClick={() => setShowPw(true)} className="inline-flex items-center gap-1.5 whitespace-nowrap" style={{ ...onHero, minHeight: 28, padding: "0 10px", borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+              <KeyRound size={13} /> เปลี่ยนรหัสผ่าน
             </button>
           )}
-          <button onClick={() => setShowEditInfo(true)} disabled={uploading} className="inline-flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50" style={{ minHeight: 44, padding: "0 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, background: "#FFFFFF", color: "#17171B" }}>
-            <Pencil size={15} /> แก้ไขข้อมูลส่วนตัว
+          <button onClick={() => setShowEditInfo(true)} disabled={uploading} className="inline-flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50" style={{ minHeight: 28, padding: "0 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "#FFFFFF", color: "#17171B" }}>
+            <Pencil size={13} /> แก้ไขข้อมูลส่วนตัว
           </button>
         </div>
       </section>

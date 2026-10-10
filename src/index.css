@@ -141,3 +141,44 @@ html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::pl
 
 /* แถบคู่มือการใช้งานไม่ต้องพิมพ์ออกไปกับรายงาน */
 @media print { .no-print { display: none !important; } }
+
+/* ============================================================
+   MOBILE TYPE SCALE & TOUCH (จอโทรศัพท์ < 768px)
+   ขยายตัวอักษรขนาดเล็กทั้งแอปให้อ่านภาษาไทยได้สบายบนมือถือ
+   (ขั้นต่ำ ~12.5px, เนื้อหาหลัก 15px) โดยไม่กระทบหน้าจอคอมพิวเตอร์
+   ============================================================ */
+@media (max-width: 767px) {
+  .app-shell { line-height: 1.5; -webkit-tap-highlight-color: transparent; }
+
+  /* Tailwind text utilities */
+  .app-shell .text-\[10px\] { font-size: 11.5px; }
+  .app-shell .text-\[11px\] { font-size: 12.5px; }
+  .app-shell .text-xs { font-size: 13px; line-height: 1.45; }
+  .app-shell .text-sm { font-size: 15px; line-height: 1.5; }
+  .app-shell h1.text-2xl { font-size: 22px; line-height: 1.3; }
+
+  /* inline font sizes (React style props) */
+  .app-shell [style*="font-size: 10.5px"],
+  .app-shell [style*="font-size: 11px"],
+  .app-shell [style*="font-size: 11.5px"] { font-size: 12.5px !important; }
+  .app-shell [style*="font-size: 12px"],
+  .app-shell [style*="font-size: 12.5px"] { font-size: 13px !important; }
+  .app-shell [style*="font-size: 13px"],
+  .app-shell [style*="font-size: 13.5px"] { font-size: 14px !important; }
+  .app-shell [style*="font-size: 14px"] { font-size: 15px !important; }
+
+  /* ช่องกรอก 16px — กัน iOS ซูมหน้าจอเองตอนแตะช่องกรอก และแตะง่ายขึ้น */
+  .app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .app-shell select,
+  .app-shell textarea { font-size: 16px !important; min-height: 44px; }
+
+  /* ตารางข้อมูล: ไม่บีบคอลัมน์จนตัวหนังสือแตกบรรทัด — เลื่อนซ้าย-ขวาภายในกรอบแทน */
+  .app-shell .table-scroll > table { min-width: 680px; }
+  .app-shell .table-scroll th, .app-shell .table-scroll td.font-mono { white-space: nowrap; }
+  .app-shell .table-scroll th, .app-shell .table-scroll td { padding-top: 10px; padding-bottom: 10px; }
+  .table-scroll { overscroll-behavior-x: contain; scrollbar-width: thin; }
+
+  /* ปุ่มไอคอนเล็กในแถว/การ์ด: ขยายพื้นที่แตะโดยไม่เปลี่ยนหน้าตา */
+  .app-shell main button:has(> svg:only-child) { position: relative; }
+  .app-shell main button:has(> svg:only-child)::after { content: ""; position: absolute; inset: -9px; }
+}

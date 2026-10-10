@@ -99,7 +99,8 @@ function applyTheme(t) {
 }
 applyTheme(readTheme());
 
-const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,sans-serif";
+// แบบอักษรเดียวกันทุกหน้า — IBM Plex Sans Thai คือฟอนต์ที่ index.html โหลดไว้จริง
+const FONT = "'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,sans-serif";
 
 /* ============================================================
    GOOGLE SHEETS BACKEND
@@ -775,16 +776,17 @@ function GuideBar({ id }) {
   );
 }
 
+// หัวข้อหน้าแบบเดียวกันทุกหน้า (MHead ด้านล่างเรียกตัวนี้เช่นกัน)
 function SectionHead({ eyebrow, title, sub, right }) {
   return (
     <>
-      <div className="flex items-end justify-between mb-5 pb-4" style={{ borderBottom: `2px solid ${C.navy}` }}>
-        <div>
-          <div className="text-xs font-semibold tracking-wide mb-1" style={{ color: C.crimson }}>{eyebrow}</div>
-          <h1 className="text-2xl font-bold" style={{ color: C.ink }}>{title}</h1>
-          {sub && <p className="text-sm mt-1" style={{ color: C.slate }}>{sub}</p>}
+      <div className="flex items-end justify-between gap-4 flex-wrap mb-5 pb-4" style={{ borderBottom: `2px solid ${C.navy}` }}>
+        <div className="min-w-0">
+          {eyebrow && <div className="text-xs font-semibold tracking-wide mb-1" style={{ color: C.crimson }}>{eyebrow}</div>}
+          <h1 className="text-2xl font-bold" style={{ color: C.ink, lineHeight: 1.25 }}>{title}</h1>
+          {sub && <p className="text-sm mt-1" style={{ color: C.slate, maxWidth: "64ch" }}>{sub}</p>}
         </div>
-        {right}
+        {right && <div className="flex items-center gap-2 flex-wrap">{right}</div>}
       </div>
       <GuideBar id={eyebrow} />
     </>
@@ -883,15 +885,15 @@ const inputStyle = { get border() { return `1px solid ${C.line}`; }, padding: "8
    คลังความรู้ / รายงาน : พื้นเทากลาง การ์ดขาวมุมโค้ง ตัวอักษรเข้ม
    สีแดง ACT ใช้เฉพาะปุ่มหลักและจุดเน้น (แถบเมนูซ้ายไม่เปลี่ยน)
    ============================================================ */
-const MFONT = "'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,sans-serif";
-const MDISPLAY = "'Anuphan','IBM Plex Sans Thai','Noto Sans Thai',sans-serif";
+const MFONT = FONT;
+const MDISPLAY = FONT;
+// สีตัวอักษร เส้น และพื้นหลังใช้ชุดเดียวกับ C ทุกหน้า — เหลือเฉพาะคีย์ที่ C ไม่มี
 const N_LIGHT = {
-  navy: "#17171B", navyDeep: "#17171B", navySoft: "#5B5B66", ink: "#17171B", slate: "#5B5B66", mute: "#6B6B76",
-  line: "#E6E6EA", lineStrong: "#D6D6DC", paper: "#F7F7F9", white: "#FFFFFF", bg: "#F4F4F6", soft: "#F0F0F3",
+  lineStrong: "#E8CFCE", bg: C_LIGHT.paper, soft: "#FBEDEC",
   tint: "#FCEEF1", tintInk: "#8E1229", inv: "#17171B", invText: "#FFFFFF",
 };
 const N_DARK = {
-  navyDeep: "#1F2228", lineStrong: "#3A3E48", paper: "#1C1E24", bg: "#0F1013", soft: "#23262D",
+  lineStrong: "#3A3E48", bg: C_DARK.paper, soft: "#23262D",
   tint: "#2E1419", tintInk: "#F2899A", inv: "#E8E9EC", invText: "#17191E",
 };
 // พาเลตต์กลางของหน้าแบบใหม่ — คีย์ชุดเดียวกับ C จึงใช้แทนกันได้ทั้งธีมสว่าง/มืด
@@ -904,22 +906,7 @@ function MPage({ children, innerRef, className = "" }) {
   return <div ref={innerRef} className={`m-page ${className}`} style={{ background: N.bg, color: N.ink, fontFamily: MFONT }}>{children}</div>;
 }
 
-function MHead({ eyebrow, title, sub, right }) {
-  const N = NC();
-  return (
-    <>
-    <div className="flex items-end justify-between gap-4 flex-wrap mb-5">
-      <div className="min-w-0">
-        {eyebrow && <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", color: N.crimson }}>{eyebrow}</div>}
-        <h1 style={{ fontFamily: MDISPLAY, fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: N.ink, marginTop: 2 }}>{title}</h1>
-        {sub && <p style={{ fontSize: 14, color: N.slate, marginTop: 4, maxWidth: "64ch" }}>{sub}</p>}
-      </div>
-      {right && <div className="flex items-center gap-2 flex-wrap">{right}</div>}
-    </div>
-    <GuideBar id={eyebrow} />
-    </>
-  );
-}
+function MHead(props) { return <SectionHead {...props} />; }
 
 function MBtn({ children, onClick, variant = "primary", disabled, icon: Icon, small, title }) {
   const N = NC();

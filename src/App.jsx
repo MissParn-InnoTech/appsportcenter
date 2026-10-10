@@ -374,11 +374,35 @@ function buildCombinedSport(data) {
   return [...base, ...extraRows].sort((a, b) => a.dayIndex - b.dayIndex || String(a.start).localeCompare(String(b.start)));
 }
 
-// รวมตารางจาก 2 แหล่ง — ถ้าครู/วัน/เวลาเดียวกันมีอยู่แล้ว ให้ใช้แถวเดิม (อาจแก้ไขได้)
+// รวมตารางจาก 2 แหล่ง — ถ้าครู/วัน/เวลาเดียวกันมีอยู่แล้ว ให้นับเป็นคาบเดียว
+// กันคาบซ้ำ 2 แบบที่ทำให้ Workload บวม:
+//  1) ครูคนเดียวถือหลายตำแหน่ง (เช่น "ผู้ฝึกสอนกีฬาว่ายน้ำ" + "ครูประจำระดับ ม.4") แล้วทั้งสองแท็บ
+//     มีคาบเดียวกัน — หลังแปลงตำแหน่งเป็นชื่อครูจะได้ ครู/วัน/เวลา ซ้ำกัน → เก็บแถวที่ข้อมูลครบกว่า
+//  2) แท็บตำแหน่งเดียวกันถูกสร้างซ้ำด้วยชื่อสะกดต่างกัน (เช่น "ครูประจำระดับ ม.2" กับ "ครูประจำระดับ ม2")
+//     → ใช้แท็บที่ตรงกับชีตตารางสอนรายครู (หรือแท็บแรกที่พบ) ทิ้งแท็บที่เหลือ
+function scheduleDetailScore(s) {
+  return (s._row ? 4 : 0) + (s.loc ? 2 : 0) + (/\[.+\]/.test(`${s.group || ""}${s.subject || ""}`) ? 1 : 0);
+}
 function mergeSchedules(base, extra) {
+  const official = new Set(extra.map((s) => s.position || s.teacher).filter(Boolean));
+  const labelOf = (s) => s.position || s.teacher || "";
+  const chosen = new Map(); // ตำแหน่ง (ตัดจุด/ช่องว่าง) → ชื่อแท็บที่ใช้จริง
+  base.forEach((s) => {
+    const label = labelOf(s); const k = normPosition(label);
+    if (!k) return;
+    const cur = chosen.get(k);
+    if (!cur || (!official.has(cur) && official.has(label))) chosen.set(k, label);
+  });
+  const cleanBase = base.filter((s) => { const k = normPosition(labelOf(s)); return !k || chosen.get(k) === labelOf(s); });
   const key = (s) => `${normTeacherName(s.teacher)}|${s.day}|${s.start}|${s.end}`;
-  const seen = new Set(base.map(key));
-  return [...base, ...extra.filter((s) => !seen.has(key(s)))];
+  const out = []; const at = new Map();
+  [...cleanBase, ...extra].forEach((s) => {
+    const k = key(s);
+    if (!at.has(k)) { at.set(k, out.length); out.push(s); return; }
+    const i = at.get(k);
+    if (scheduleDetailScore(s) > scheduleDetailScore(out[i])) out[i] = s;
+  });
+  return out;
 }
 
 // แคชตารางสอนไว้ในเครื่อง — เปิดแอพครั้งถัดไปเห็นตารางทันที แล้วค่อยอัปเดตจาก Sheets เบื้องหลัง

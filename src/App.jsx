@@ -269,7 +269,22 @@ async function loadTeachingSchedule() {
       type: s.type,
       source: "teachingSheet",
     }));
-  return { rows, combined: buildCombinedSport(data), warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "" };
+  // ครูที่ได้รับมอบหมายให้สอนตามตารางแต่ละแท็บ (เก็บในแท็บ "มอบหมายครู" ของชีตตารางสอน)
+  const assign = {};
+  (data.teachers || []).forEach((t) => { if (Array.isArray(t.assignees) && t.assignees.length) assign[t.name] = t.assignees; });
+  return { rows, combined: buildCombinedSport(data), warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "", assign };
+}
+
+// บันทึกรายชื่อครูที่มอบหมายให้ตารางสอน 1 แท็บ (แทนที่รายชื่อเดิมของแท็บนั้นทั้งหมด)
+async function saveScheduleAssignees(scheduleName, teachers, by) {
+  if (!TEACHING_API_URL) throw new Error("ยังไม่ได้เชื่อมต่อชีตตารางสอน");
+  const res = await fetch(TEACHING_API_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "assignScheduleTeachers", payload: { scheduleName, teachers, by } }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "บันทึกไม่สำเร็จ");
+  return data.result.teachers;
 }
 
 // ชื่อกีฬาของครูแต่ละคน จากช่อง "งาน/กีฬา" ในหัวแท็บ เช่น "สำนักงานศูนย์กีฬา / เต้น" → "เต้น"
@@ -1154,6 +1169,7 @@ export default function App() {
   const [teachingRows, setTeachingRows] = useState(() => readScheduleCache().teaching || []);
   const [combinedSport, setCombinedSport] = useState(() => readScheduleCache().combined || []);
   const [scheduleLoaded, setScheduleLoaded] = useState(() => !!readScheduleCache().savedAt);
+  const [scheduleAssign, setScheduleAssign] = useState(() => readScheduleCache().assign || {});
   const allSchedule = useMemo(() => mergeSchedules(schedule, teachingRows), [schedule, teachingRows]);
 
   // persistence — Google Sheets backend when API_URL is set, else local shared storage
@@ -1161,9 +1177,10 @@ export default function App() {
     // ตารางสอนรายครู — เริ่มโหลดทันทีพร้อมข้อมูลหลัก (ไม่ต้องรอกัน)
     if (TEACHING_API_URL) {
       loadTeachingSchedule()
-        .then(({ rows, combined, warnings }) => {
+        .then(({ rows, combined, warnings, assign }) => {
           setTeachingRows(rows); setCombinedSport(combined); setScheduleWarnings(warnings); setScheduleLoaded(true);
-          writeScheduleCache({ teaching: rows, combined, warnings });
+          setScheduleAssign(assign || {});
+          writeScheduleCache({ teaching: rows, combined, warnings, assign: assign || {} });
         })
         .catch(() => {});
     }
@@ -1310,7 +1327,7 @@ export default function App() {
           {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
           {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
-          {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
+          {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} scheduleAssign={scheduleAssign} onScheduleAssign={(name, list) => setScheduleAssign((m) => { const n = { ...m, [name]: list }; writeScheduleCache({ assign: n }); return n; })} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
           {tab === "reports" && <Reports user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} />}
           {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} repairs={repairs} pmSchedule={pmSchedule} docs={docs} actionsLog={actionsLog} logAction={logAction} setTab={setTab} />}
         </main>
@@ -4103,7 +4120,89 @@ function SubstituteEngine({ user, schedule = [], staffList = [], logAction }) {
   );
 }
 
-function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], repairs = [], pmSchedule = [], docs = [], setTab }) {
+/* ดูตารางสอนของ 1 แท็บ + มอบหมายครูผู้สอน (เลือกได้หลายคน) — เปิดจากการ์ด "คาบสอนต่อสัปดาห์รายบุคคล" */
+const SCHEDULE_DAY_ORDER = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
+function ScheduleAssignModal({ name, rows, assignees, staffList, canAssign, by, onSaved, onClose }) {
+  const [picked, setPicked] = useState(assignees);
+  const [adding, setAdding] = useState(false);
+  const [q, setQ] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const dirty = picked.join("|") !== assignees.join("|");
+  const toggle = (n) => setPicked((p) => (p.includes(n) ? p.filter((x) => x !== n) : [...p, n]));
+  const byDay = SCHEDULE_DAY_ORDER.map((d) => [d, rows.filter((r) => r.day === d).sort((a, b) => String(a.start).localeCompare(String(b.start)))]).filter(([, l]) => l.length);
+  const choices = staffList.filter((s) => s.name && (!q.trim() || s.name.includes(q.trim()) || (s.dept || "").includes(q.trim())));
+  const save = async () => {
+    setSaving(true); setErr("");
+    try {
+      const saved = await saveScheduleAssignees(name, picked, by);
+      onSaved(saved); setAdding(false);
+    } catch (e) { setErr(e.message || "บันทึกไม่สำเร็จ"); }
+    setSaving(false);
+  };
+  return (
+    <Modal title={`ตารางสอน — ${name}`} onClose={onClose} wide>
+      <div className="mb-4 p-3" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold" style={{ color: C.slate }}>ครูผู้สอนที่มอบหมาย ({picked.length} คน)</span>
+          {canAssign && !adding && (
+            <button onClick={() => setAdding(true)} className="text-xs font-semibold px-2 py-1 flex items-center gap-1" style={{ background: C.navy, color: C.white }}>
+              <Plus size={12} /> เพิ่มครู
+            </button>
+          )}
+        </div>
+        {picked.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่ได้มอบหมายครู</div> : (
+          <div className="flex flex-wrap gap-1.5">
+            {picked.map((n) => (
+              <span key={n} className="text-xs px-2 py-1 flex items-center gap-1" style={{ background: C.white, border: `1px solid ${C.line}`, color: C.ink }}>
+                {n}
+                {canAssign && <button onClick={() => toggle(n)} aria-label={`เอา ${n} ออก`}><X size={12} style={{ color: C.slate }} /></button>}
+              </span>
+            ))}
+          </div>
+        )}
+        {adding && (
+          <div className="mt-3">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อครู / หน่วยงาน" className="w-full text-sm px-2 py-1.5 mb-2" style={{ border: `1px solid ${C.line}`, background: C.white, color: C.ink }} />
+            <div className="overflow-y-auto" style={{ maxHeight: 180, border: `1px solid ${C.line}`, background: C.white }}>
+              {choices.length === 0 ? <div className="text-sm p-2" style={{ color: C.mute }}>ไม่พบรายชื่อ</div> : choices.map((s) => (
+                <label key={s.id || s.name} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer" style={{ borderBottom: `1px solid ${C.line}`, color: C.ink }}>
+                  <input type="checkbox" checked={picked.includes(s.name)} onChange={() => toggle(s.name)} />
+                  <span className="flex-1 truncate">{s.name}</span>
+                  <span className="text-[11px] shrink-0" style={{ color: C.mute }}>{s.dept || ""}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {err && <div className="text-xs mt-2" style={{ color: C.crimson }}>{err}</div>}
+        {canAssign && dirty && (
+          <div className="flex gap-2 mt-3">
+            <button onClick={save} disabled={saving} className="flex-1 text-sm font-semibold py-2" style={{ background: C.crimson, color: "#fff", opacity: saving ? 0.6 : 1 }}>{saving ? "กำลังบันทึก..." : "บันทึกการมอบหมาย"}</button>
+            <button onClick={() => { setPicked(assignees); setAdding(false); setErr(""); }} disabled={saving} className="text-sm px-3 py-2" style={{ border: `1px solid ${C.line}`, color: C.slate }}>ยกเลิก</button>
+          </div>
+        )}
+      </div>
+      {byDay.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ไม่มีคาบสอนในตารางนี้</div> : byDay.map(([day, list]) => (
+        <div key={day} className="mb-3">
+          <div className="text-xs font-bold mb-1" style={{ color: C.navy }}>{day} <span className="font-normal" style={{ color: C.mute }}>· {list.length} คาบ</span></div>
+          {list.map((r) => (
+            <div key={r.id} className="flex gap-2 text-xs py-1.5" style={{ borderTop: `1px solid ${C.line}` }}>
+              <span className="font-mono shrink-0" style={{ color: C.slate, width: 84 }}>{r.start}–{r.end}</span>
+              <span className="flex-1" style={{ color: C.ink }}>
+                {r.subject}{r.group ? ` · ${r.group}` : ""}
+                {r.loc ? <span style={{ color: C.mute }}> · {r.loc}</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </Modal>
+  );
+}
+
+function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], scheduleAssign = {}, onScheduleAssign, repairs = [], pmSchedule = [], docs = [], setTab }) {
+  const [openSchedule, setOpenSchedule] = useState(null);
   const [budget, setBudget] = useState({ budgets: [], expenses: [], income: [], loaded: false });
   useEffect(() => {
     if (!API_URL || !user) return;
@@ -4292,8 +4391,29 @@ function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffL
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <AnaCard title="คาบสอนต่อสัปดาห์รายบุคคล" right={<span className="text-[11px]" style={{ color: C.mute }}>จากตารางสอน</span>}>
           {A.workload.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่มีข้อมูลตารางสอน</div> :
-            A.workload.slice(0, 12).map((w) => <MiniBar key={w.name} label={w.name} value={w.n} max={maxWork} color={w.n >= 30 ? C.crimson : C.navy} suffix=" คาบ" />)}
-          {A.workload.length > 0 && <div className="text-[11px] mt-2" style={{ color: C.mute }}>สีแดง = ≥ 30 คาบ/สัปดาห์ ควรพิจารณากระจายภาระงาน</div>}
+            A.workload.slice(0, 12).map((w) => {
+              const who = scheduleAssign[w.name] || [];
+              return (
+                <button key={w.name} onClick={() => setOpenSchedule(w.name)} className="block w-full text-left" title="กดเพื่อดูตารางสอนและมอบหมายครู">
+                  <MiniBar label={w.name} value={w.n} max={maxWork} color={w.n >= 30 ? C.crimson : C.navy} suffix=" คาบ" />
+                  <div className="text-[11px] -mt-1 mb-2 truncate" style={{ color: who.length ? C.slate : C.mute }}>{who.length ? `ครูผู้สอน: ${who.join(", ")}` : "ยังไม่ได้มอบหมายครู"}</div>
+                </button>
+              );
+            })}
+          {A.workload.length > 0 && <div className="text-[11px] mt-2" style={{ color: C.mute }}>กดที่ชื่อเพื่อดูตารางสอนและมอบหมายครู · สีแดง = ≥ 30 คาบ/สัปดาห์ ควรพิจารณากระจายภาระงาน</div>}
+          {openSchedule && (
+            <ScheduleAssignModal
+              key={openSchedule}
+              name={openSchedule}
+              rows={schedule.filter((r) => (r.teacher || "-") === openSchedule && !isRoomScheduleRow(r))}
+              assignees={scheduleAssign[openSchedule] || []}
+              staffList={staffList}
+              canAssign={canManage(user.role)}
+              by={user.name || user.id || ""}
+              onSaved={(list) => onScheduleAssign && onScheduleAssign(openSchedule, list)}
+              onClose={() => setOpenSchedule(null)}
+            />
+          )}
         </AnaCard>
         <AnaCard title="กีฬาที่สอน (คาบ/สัปดาห์)" right={<span className="text-[11px]" style={{ color: C.mute }}>จากตารางรวมกีฬา</span>}>
           {sportList.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่มีข้อมูล</div> :

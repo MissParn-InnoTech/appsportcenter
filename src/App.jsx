@@ -126,6 +126,27 @@ function normTeacherName(s) {
     .replace(/\s+/g, "")
     .trim();
 }
+// ชื่อแรก (ตัดคำนำหน้า/นามสกุล) — ใช้เทียบกรณีชีตบุคลากรเก็บแค่ชื่อต้น เช่น "วรรณา" กับ "มิสวรรณา จิรพลานุรักษ์"
+function firstNameOf(s) {
+  return String(s || "")
+    .replace(/(นางสาว|น\.ส\.|นาย|นาง|มาสเตอร์|เมสเตอร์|มิสเตอร์|มิส|คุณครู|ครู|ม\.)/g, "")
+    .trim().split(/\s+/)[0] || "";
+}
+// เป็นครูคนเดียวกันไหม: ชื่อเต็มตรงกัน หรือฝั่งหนึ่งมีแค่ชื่อต้นและชื่อต้นตรงกัน
+function sameTeacher(a, b) {
+  const na = normTeacherName(a), nb = normTeacherName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const fa = firstNameOf(a), fb = firstNameOf(b);
+  return fa.length >= 2 && fa === fb && (na === fa || nb === fb);
+}
+// ตำแหน่ง → ชื่อครูปีนี้ (จากชีต "ตั้งค่า" คอลัมน์ ตำแหน่ง / ชื่อครูปีนี้) — ตารางสอนผูกกับตำแหน่ง
+// ส่วนคนย้ายได้ทุกปี จึงแปลงชื่อตำแหน่งเป็นชื่อครูตอนแสดงผล ตำแหน่งที่ยังไม่มีครูคงชื่อตำแหน่งไว้
+const normPosition = (s) => String(s || "").replace(/[\s.]/g, "");
+function resolveTeacher(name, positionMap) {
+  const hit = positionMap && positionMap[normPosition(name)];
+  return hit || name;
+}
 function catCodeFromName(name) {
   const hit = CATEGORIES.find((c) => c.name === name);
   return hit ? hit.code : name;
@@ -251,6 +272,8 @@ async function loadTeachingSchedule() {
     const sig = data.slots.filter((s) => s.teacherId === t.id).map((s) => `${s.dayIndex}:${s.period}:${s.raw}`).join("|");
     if (sig && seenGrid.has(sig)) skip.add(t.id); else if (sig) seenGrid.set(sig, t.id);
   });
+  const positionMap = {};
+  Object.entries(data.meta?.positionMap || {}).forEach(([k, v]) => { if (k && v) positionMap[normPosition(k)] = String(v).trim(); });
   const rows = data.slots
     .filter((s) => !skip.has(s.teacherId))
     .filter((s) => s.start && s.end && s.day)
@@ -261,7 +284,8 @@ async function loadTeachingSchedule() {
       end: s.end,
       period: s.period,
       subject: s.subject || s.dept || (s.type === "activity" ? "กิจกรรม" : "คาบสอน"),
-      teacher: s.teacher,
+      teacher: resolveTeacher(s.teacher, positionMap),
+      position: s.teacher,
       dept: s.dept || "",
       loc: s.room || "",
       group: (s.classes || []).join(", "),
@@ -272,7 +296,7 @@ async function loadTeachingSchedule() {
   // ครูที่ได้รับมอบหมายให้สอนตามตารางแต่ละแท็บ (เก็บในแท็บ "มอบหมายครู" ของชีตตารางสอน)
   const assign = {};
   (data.teachers || []).forEach((t) => { if (Array.isArray(t.assignees) && t.assignees.length) assign[t.name] = t.assignees; });
-  return { rows, combined: buildCombinedSport(data), warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "", assign };
+  return { rows, combined: buildCombinedSport(data), warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "", assign, positionMap };
 }
 
 // บันทึกรายชื่อครูที่มอบหมายให้ตารางสอน 1 แท็บ (แทนที่รายชื่อเดิมของแท็บนั้นทั้งหมด)
@@ -1170,18 +1194,23 @@ export default function App() {
   const [combinedSport, setCombinedSport] = useState(() => readScheduleCache().combined || []);
   const [scheduleLoaded, setScheduleLoaded] = useState(() => !!readScheduleCache().savedAt);
   const [scheduleAssign, setScheduleAssign] = useState(() => readScheduleCache().assign || {});
+  const [positionMap, setPositionMap] = useState(() => readScheduleCache().positionMap || {});
   const updateScheduleAssign = (name, list) => setScheduleAssign((m) => { const n = { ...m, [name]: list }; writeScheduleCache({ assign: n }); return n; });
-  const allSchedule = useMemo(() => mergeSchedules(schedule, teachingRows), [schedule, teachingRows]);
+  const allSchedule = useMemo(
+    () => mergeSchedules(schedule.map((s) => { const t = resolveTeacher(s.teacher, positionMap); return t === s.teacher ? s : { ...s, teacher: t, position: s.teacher }; }), teachingRows),
+    [schedule, teachingRows, positionMap]
+  );
 
   // persistence — Google Sheets backend when API_URL is set, else local shared storage
   useEffect(() => {
     // ตารางสอนรายครู — เริ่มโหลดทันทีพร้อมข้อมูลหลัก (ไม่ต้องรอกัน)
     if (TEACHING_API_URL) {
       loadTeachingSchedule()
-        .then(({ rows, combined, warnings, assign }) => {
+        .then(({ rows, combined, warnings, assign, positionMap: pm }) => {
+          setPositionMap(pm || {});
           setTeachingRows(rows); setCombinedSport(combined); setScheduleWarnings(warnings); setScheduleLoaded(true);
           setScheduleAssign(assign || {});
-          writeScheduleCache({ teaching: rows, combined, warnings, assign: assign || {} });
+          writeScheduleCache({ teaching: rows, combined, warnings, assign: assign || {}, positionMap: pm || {} });
         })
         .catch(() => {});
     }
@@ -2794,7 +2823,7 @@ function Facility({ items, schedule = [], pmSchedule = [], repairs = [], damages
 function StaffProfileView({ person, schedule = [], tasks = [], user, onBack, setTab }) {
   const key = normTeacherName(person.name);
   const rows = useMemo(() => schedule
-    .filter((e) => normTeacherName(e.teacher) === key && e.period !== "AS")
+    .filter((e) => sameTeacher(e.teacher, person.name) && e.period !== "AS")
     .sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day) || String(a.start).localeCompare(String(b.start))), [schedule, key]);
   const byDay = DAYS.map((d) => ({ day: d, rows: rows.filter((r) => r.day === d) })).filter((d) => d.rows.length);
   const hours = rows.reduce((s, r) => s + durationHrs(r.start, r.end), 0);
@@ -3108,7 +3137,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   const hasOwnSchedule = user.role === "L1" || user.role === "L2" || manager;
   const canSeeSport = manager || user.role === "L4";
   const myPeriodCount = useMemo(
-    () => schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name)).length,
+    () => schedule.filter((s) => sameTeacher(s.teacher, user.name)).length,
     [schedule, user.name]
   );
   // หัวหน้าที่ไม่มีคาบสอนของตัวเอง — เปิดหน้าให้เจอ "ตารางรวมกีฬา" เลย
@@ -3120,7 +3149,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   // login เข้ามา (เช่น "นายชาญวิทย์ พึ่งอิ่ม" จากชีตบุคลากร)
   const sportRows = useMemo(() => schedule.filter((s) => !isRoomScheduleRow(s)), [schedule]);
   const rows = mine
-    ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name))
+    ? schedule.filter((s) => sameTeacher(s.teacher, user.name))
     : canSeeSport ? combinedSport : [];
 
   // งานอื่นที่หัวหน้ามอบหมาย (ไม่ใช่คาบสอน) — จาก Work Management, กรองเฉพาะที่ assign ให้ฉัน
@@ -3910,7 +3939,7 @@ function SubstituteEngine({ user, schedule = [], staffList = [], logAction }) {
   const absentTeacher = staffList.find((s) => String(s.id) === String(absentId));
   const teacherRows = useMemo(() => {
     if (!absentTeacher) return [];
-    return schedule.filter((r) => normTeacherName(r.teacher) === normTeacherName(absentTeacher.name) && r.period !== "AS" && !isRoomScheduleRow(r));
+    return schedule.filter((r) => sameTeacher(r.teacher, absentTeacher.name) && r.period !== "AS" && !isRoomScheduleRow(r));
   }, [schedule, absentTeacher]);
   const availableDays = useMemo(() => DAYS.filter((d) => teacherRows.some((r) => r.day === d)), [teacherRows]);
   const rowsForDay = useMemo(() => teacherRows.filter((r) => r.day === day)
@@ -3926,7 +3955,7 @@ function SubstituteEngine({ user, schedule = [], staffList = [], logAction }) {
     if (!canSearch) return;
     const candidates = staffList
       .filter((s) => String(s.id) !== String(absentTeacher.id))
-      .filter((s) => !schedule.some((r) => normTeacherName(r.teacher) === normTeacherName(s.name) && r.day === selectedRow.day && r.period === selectedRow.period && r.period !== "AS"))
+      .filter((s) => !schedule.some((r) => sameTeacher(r.teacher, s.name) && r.day === selectedRow.day && r.period === selectedRow.period && r.period !== "AS"))
       .map((s) => {
         const mine = monthSubs.filter((x) => String(x.subTeacherId) === String(s.id));
         const taughtSameSubject = subs.some((x) => String(x.subTeacherId) === String(s.id) && x.subject && x.subject === selectedRow.subject);
@@ -6383,7 +6412,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   const myTasks = tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name);
   const myOverdue = myTasks.filter((t) => taskBucket(t) === "overdue").length;
   const myToday = myTasks.filter((t) => taskBucket(t) === "today").length;
-  const myPeriods = schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name) && s.period !== "AS").length;
+  const myPeriods = schedule.filter((s) => sameTeacher(s.teacher, user.name) && s.period !== "AS").length;
   const myCompleted = myTasks.filter((t) => t.status === "COMPLETED").length;
   const completionPct = myTasks.length ? Math.round((myCompleted / myTasks.length) * 100) : 0;
 

@@ -1,0 +1,96 @@
+diff --git a/src/App.jsx b/src/App.jsx
+index c2dbaff..1f8e2f9 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -5496,6 +5496,9 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
+   const [date, setDate] = useState(() => new Date());
+   const [selected, setSelected] = useState(null);
+   const [showNew, setShowNew] = useState(false);
++  const [editing, setEditing] = useState(null);   // กิจกรรมองค์กรที่กำลังแก้ไข (เฉพาะ L3)
++  const [busy, setBusy] = useState(false);
++  const [calError, setCalError] = useState("");
+   const mineOnly = user.role === "L1" || user.role === "L2";
+   const manager = canManage(user.role);
+ 
+@@ -5520,6 +5523,32 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
+     setShowNew(false);
+   };
+ 
++  // L3 ปรับปรุงปฏิทิน — แก้ไข/ลบกิจกรรมองค์กร (รอ backend ยืนยันก่อนเปลี่ยนหน้าจอ)
++  const updateEvent = async (form) => {
++    if (!editing?.id) return;
++    setBusy(true); setCalError("");
++    try {
++      await postToSheetsAwait("updateOrgEvent", { id: editing.id, ...form, end: form.end || form.start });
++      setOrgEvents((prev) => prev.map((e) => (e.id === editing.id ? { ...e, ...form, end: form.end || form.start } : e)));
++      logAction(`แก้ไขกิจกรรมองค์กร: ${form.title}`);
++      setEditing(null); setSelected(null);
++    } catch (err) { setCalError(err.message || "บันทึกไม่สำเร็จ"); }
++    setBusy(false);
++  };
++  const deleteEvent = async (ev) => {
++    if (!ev?.id) { setCalError("รายการนี้ไม่มี ID ในชีต จึงลบจากแอปไม่ได้ — กรุณาลบที่ Google Sheets"); return; }
++    if (!window.confirm(`ลบกิจกรรม “${ev.title}” ออกจากปฏิทิน?`)) return;
++    setBusy(true); setCalError("");
++    try {
++      const r = await postToSheetsAwait("deleteOrgEvent", { id: ev.id });
++      if (r && r.deletedRow == null) throw new Error("ไม่พบรายการนี้ในชีต (อาจถูกลบไปแล้ว)");
++      setOrgEvents((prev) => prev.filter((e) => e.id !== ev.id));
++      logAction(`ลบกิจกรรมองค์กร: ${ev.title}`);
++      setSelected(null);
++    } catch (err) { setCalError(err.message || "ลบไม่สำเร็จ"); }
++    setBusy(false);
++  };
++
+   const calVars = { "--m-ink": C.ink, "--m-sub": C.slate, "--m-line": C.line, "--m-soft": C.soft, "--m-card": C.white, "--m-paper": C.paper, "--m-tint": C.tint };
+ 
+   return (
+@@ -5612,7 +5641,15 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
+                 <button onClick={() => setTab("tasks")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้างาน →</button>
+               </>
+             )}
+-            {selected.layer === "org" && (<><div>หน่วยงาน: {selected.raw.dept}</div><div>สถานที่: {selected.raw.loc || "-"}</div><div>{selected.raw.description}</div></>)}
++            {selected.layer === "org" && (<><div>หน่วยงาน: {selected.raw.dept}</div><div>สถานที่: {selected.raw.loc || "-"}</div><div>{selected.raw.description}</div>
++              {manager && (
++                <div className="flex flex-wrap justify-end gap-2 pt-3">
++                  <Btn variant="ghost" disabled={busy} onClick={() => deleteEvent(selected.raw)}>ลบ</Btn>
++                  <Btn disabled={busy} onClick={() => { setCalError(""); setEditing(selected.raw); }}>แก้ไข</Btn>
++                </div>
++              )}
++              {calError && !editing && <div role="alert" style={{ fontSize: 13, color: C.crimson }}>{calError}</div>}
++            </>)}
+             {selected.layer === "pm" && (<><div>รอบซ่อม: {selected.raw.cycle}</div><div>ผู้รับผิดชอบ: {selected.raw.owner || "-"}</div><button onClick={() => setTab("maintenance")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้าซ่อมบำรุง →</button></>)}
+           </div>
+         </Modal>
+@@ -5622,12 +5659,20 @@ function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEven
+           <OrgEventForm onSubmit={addEvent} />
+         </Modal>
+       )}
++      {editing && (
++        <Modal title="แก้ไขกิจกรรมองค์กร" onClose={() => setEditing(null)}>
++          <OrgEventForm initial={editing} onSubmit={updateEvent} busy={busy} />
++          {calError && <div role="alert" className="mt-2" style={{ fontSize: 13, color: C.crimson }}>{calError}</div>}
++        </Modal>
++      )}
+     </MPage>
+   );
+ }
+ 
+-function OrgEventForm({ onSubmit }) {
+-  const [form, setForm] = useState({ title: "", start: "", end: "", allDay: true, dept: "ฝ่ายกิจกรรม", owner: "", loc: "", description: "" });
++function OrgEventForm({ onSubmit, initial, busy }) {
++  const [form, setForm] = useState(() => initial
++    ? { title: initial.title || "", start: initial.start || "", end: initial.end || "", allDay: true, dept: initial.dept || "", owner: initial.owner || "", loc: initial.loc || "", description: initial.description || "" }
++    : { title: "", start: "", end: "", allDay: true, dept: "ฝ่ายกิจกรรม", owner: "", loc: "", description: "" });
+   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+   const valid = form.title.trim() && form.start;
+   return (
+@@ -5642,7 +5687,7 @@ function OrgEventForm({ onSubmit }) {
+       <Field label="สถานที่"><input value={form.loc} onChange={set("loc")} style={inputStyle} /></Field>
+       <Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field>
+       <div className="flex justify-end mt-2">
+-        <Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn>
++        <Btn onClick={() => onSubmit(form)} disabled={!valid || busy}>{busy ? "กำลังบันทึก…" : "บันทึก"}</Btn>
+       </div>
+     </div>
+   );

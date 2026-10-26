@@ -1439,7 +1439,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           <LangToggle />
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
-          <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.onDark }}>Contact</span>
+          <a href="https://act-sportsday.vercel.app" target="_blank" rel="noopener noreferrer" className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.onDark }}>ACT SPORT DAY</a>
         </nav>
         <LangToggle className="min-[1080px]:hidden ml-auto mr-1" />
         <button onClick={() => setNavOpen((v) => !v)} className="min-[1080px]:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
@@ -1449,7 +1449,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           <div className="min-[1080px]:hidden absolute top-full left-0 right-0 z-20 flex flex-col" style={{ background: "#2a2a2c", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
             <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
             <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
-            <span className="mx-5 my-2 px-5 py-2 text-sm font-semibold text-center" style={{ background: C.crimson, color: C.onDark }}>Contact</span>
+            <a href="https://act-sportsday.vercel.app" target="_blank" rel="noopener noreferrer" className="mx-5 my-2 px-5 py-2 text-sm font-semibold text-center" style={{ background: C.crimson, color: C.onDark }}>ACT SPORT DAY</a>
           </div>
         )}
       </header>
